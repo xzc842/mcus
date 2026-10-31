@@ -44,7 +44,7 @@ struct InjectHeader {
 
 class SharedMemory {
 public:
-    SharedMemory(const Model& model, const std::string& shm_name);
+    SharedMemory(const Model& model, const std::string& shm_name, bool create = true);
     ~SharedMemory();
     SharedMemory(const SharedMemory&) = delete;
     SharedMemory& operator=(const SharedMemory&) = delete;

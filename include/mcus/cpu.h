@@ -14,6 +14,8 @@ namespace mcus {
 struct CpuRegisters {
     uint32_t r[16]{};
     uint32_t pc = 0;
+    // 注意：8051 的 SP 权威来源是 SFR 0x81，不是这个字段。
+    // 该字段仅为通用 ISA 预留，8051 ISA 不应读写它。
     uint32_t sp = 0;
     uint32_t flags = 0;
 };
@@ -58,6 +60,12 @@ private:
     void enter_interrupt(const InterruptDesc& irq);
     void check_reset_pin();
     void check_inject_slots();
+
+    // SP 唯一入口：8051 的 SP 在 SFR 0x81，必须经由这两个函数读写，
+    // 避免 regs_.sp 与 SFR SP 分叉。
+    uint8_t read_sp();
+    void write_sp(uint8_t v);
+
     struct IrqFrame { uint8_t saved_ip; };
     std::vector<IrqFrame> irq_stack_;
 };

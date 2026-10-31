@@ -41,6 +41,8 @@ private:
     VirtTime virtual_time_ = 0;
     std::thread cpu_thread_;
     std::thread clock_thread_;
+
+    VirtTime acc_clock_ = 0;
 };
 
 } // namespace mcus

@@ -191,24 +191,18 @@ void Simulator::cpu_loop() {
     while (!stop_requested_.load()) {
         //MCUS_INFO("cpu loop tick");
         auto* ctl = shm_.control();
-        MCUS_DEBUG("cpu test");
         if (poll++ % cfg_.simulator.control_poll_interval == 0){
-            MCUS_DEBUG("cpu ctrl");
             handle_control_commands();
         }
         if (cpu_.paused()) {
-            MCUS_DEBUG("cpu paused");
             std::this_thread::yield();
             continue;
         }
         if (stream_.full()) {
-            MCUS_DEBUG("stream full");
             std::this_thread::yield();
             continue;
         }
-        MCUS_DEBUG("before step");
         VirtTime dt = cpu_.step();
-        MCUS_DEBUG("after step dt=" + std::to_string(dt));
         if (dt == 0) {
             if (cpu_.halted()) {
                 ctl->status.store(static_cast<uint32_t>(ControlStatus::Halted));
@@ -219,9 +213,11 @@ void Simulator::cpu_loop() {
         }
         virtual_time_ += dt;
         ctl->virtual_time.store(virtual_time_);
-        MCUS_DEBUG("stored virtual_time=" + std::to_string(virtual_time_));
-        MCUS_DEBUG("stored pc=0x" + std::to_string(ctl->pc.load()));
-        advance_clock(dt);
+        acc_clock_ += dt;
+        if (acc_clock_ >= 100) {
+            advance_clock(acc_clock_);
+            acc_clock_ = 0;
+        }
     }
     MCUS_INFO("cpu loop exited");
 }

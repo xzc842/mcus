@@ -1,6 +1,7 @@
 #include "mcus/instruction.h"
 #include "mcus/cpu.h"
 #include "mcus/log.h"
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -39,7 +40,9 @@ public:
             }
 
             case 0x02: {
-                uint16_t a = (fetch(bus, pc + 1) << 8) | fetch(bus, pc + 2);
+                uint8_t b1 = fetch(bus, pc + 1);
+                uint8_t b2 = fetch(bus, pc + 2);
+                uint16_t a = (static_cast<uint16_t>(b1) << 8) | b2;
                 pc = a;
                 break;
             }
@@ -108,7 +111,9 @@ public:
             }
 
             case 0x12: {
-                uint16_t a = (fetch(bus, pc + 1) << 8) | fetch(bus, pc + 2);
+                uint8_t b1 = fetch(bus, pc + 1);
+                uint8_t b2 = fetch(bus, pc + 2);
+                uint16_t a = (static_cast<uint16_t>(b1) << 8) | b2;
                 push(bus, static_cast<uint8_t>((pc + 3) & 0xFF));
                 push(bus, static_cast<uint8_t>(((pc + 3) >> 8) & 0xFF));
                 pc = a;
@@ -215,6 +220,7 @@ public:
             }
 
             case 0x32: {
+                // RETI：与 RET 相同的两次 pop，然后通知 CPU 恢复 IP
                 uint8_t hi = pop(bus);
                 uint8_t lo = pop(bus);
                 pc = (static_cast<uint16_t>(hi) << 8) | lo;
@@ -351,7 +357,7 @@ public:
                 break;
             }
 
-            case 0x56: case 0x57: {
+                        case 0x56: case 0x57: {
                 uint8_t ri = op & 0x01;
                 write_acc(bus, static_cast<uint8_t>(
                     read_acc(bus) & bus.read8("iram", reg_read(bus, ri))));
@@ -469,8 +475,10 @@ public:
 
             case 0x78: case 0x79: case 0x7A: case 0x7B:
             case 0x7C: case 0x7D: case 0x7E: case 0x7F: {
-                reg_write(bus, op & 0x07, fetch(bus, pc + 1));
-                pc += 2;
+                uint8_t rn = static_cast<uint8_t>(op & 0x07);
+                uint8_t imm = fetch(bus, pc + 1);
+                reg_write(bus, rn, imm);
+                pc = static_cast<uint16_t>(pc + 2);
                 break;
             }
 
@@ -834,9 +842,11 @@ public:
 
             case 0xD8: case 0xD9: case 0xDA: case 0xDB:
             case 0xDC: case 0xDD: case 0xDE: case 0xDF: {
-                uint8_t rn = op & 0x07;
+                uint8_t rn = static_cast<uint8_t>(op & 0x07);
                 int8_t rel = static_cast<int8_t>(fetch(bus, pc + 1));
-                uint8_t v = static_cast<uint8_t>(reg_read(bus, rn) - 1);
+                uint8_t base = reg_bank_base(bus);
+                uint8_t before = bus.read8("iram", static_cast<Addr>(base + rn));
+                uint8_t v = static_cast<uint8_t>(before - 1);
                 reg_write(bus, rn, v);
                 if (v != 0)
                     pc = static_cast<uint16_t>(pc + 2 + rel);
@@ -949,16 +959,12 @@ private:
         uint8_t sp = static_cast<uint8_t>(bus.read8("sfr", 0x81) + 1);
         bus.write8("sfr", 0x81, sp);
         bus.write8("iram", sp, v);
-        MCUS_DEBUG("push iram[0x" + std::to_string(sp) +
-                   "] = 0x" + std::to_string(v));
     }
 
     uint8_t pop(MemoryBus& bus) {
         uint8_t sp = bus.read8("sfr", 0x81);
         uint8_t v = bus.read8("iram", sp);
         bus.write8("sfr", 0x81, static_cast<uint8_t>(sp - 1));
-        MCUS_DEBUG("pop iram[0x" + std::to_string(sp) +
-                   "] = 0x" + std::to_string(v));
         return v;
     }
 
@@ -1027,7 +1033,8 @@ private:
         SpaceId space; Addr byte_addr; uint8_t bit;
         if (!model_.resolve_bit_addr(bit_addr, space, byte_addr, bit))
             return false;
-        return ((bus.read8(space, byte_addr) >> bit) & 1) != 0;
+        bool v = ((bus.read8(space, byte_addr) >> bit) & 1) != 0;
+        return v;
     }
 
     void bit_write(MemoryBus& bus, uint8_t bit_addr, bool v) {

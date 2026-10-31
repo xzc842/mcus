@@ -11,7 +11,7 @@ namespace mcus {
 
 static size_t align4(size_t x) { return (x + 3) & ~size_t(3); }
 
-SharedMemory::SharedMemory(const Model& model, const std::string& shm_name)
+SharedMemory::SharedMemory(const Model& model, const std::string& shm_name, bool create)
     : model_(model), name_(shm_name) {
     layout();
     int fd = ::shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0600);
@@ -24,6 +24,9 @@ SharedMemory::SharedMemory(const Model& model, const std::string& shm_name)
     ::close(fd);
     if (p == MAP_FAILED) throw std::runtime_error("mmap failed: " + shm_name);
     base_ = p;
+
+    if (!create) return;   // 只读工具：不 memset、不 reset_all
+
     std::memset(base_, 0, total_size_);
 
     auto* ctl = control();
@@ -114,8 +117,8 @@ void SharedMemory::write_reg(const SpaceId& space, Addr addr, uint32_t value, ui
     if (it == reg_offset_.end()) return;
     uint8_t* p = static_cast<uint8_t*>(base_) + mmio_offset_ + it->second;
     switch (width) {
-        case 8: { uint8_t v = value; std::memcpy(p, &v, 1); break; }
-        case 16: { uint16_t v = value; std::memcpy(p, &v, 2); break; }
+        case 8: { uint8_t v = static_cast<uint8_t>(value); std::memcpy(p, &v, 1); break; }
+        case 16: { uint16_t v = static_cast<uint16_t>(value); std::memcpy(p, &v, 2); break; }
         default: { uint32_t v = value; std::memcpy(p, &v, 4); break; }
     }
 }
