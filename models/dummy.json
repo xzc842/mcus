@@ -1,0 +1,51 @@
+{
+  "name": "dummy",
+  "description": "通用最小模型，验证框架",
+  "arch": "mcus-minimal",
+  "crystal_hz": 16000000,
+  "cycles_per_instruction": 4,
+  "reset_vector": 0,
+  "reset_space": "code",
+  "initial_sp": 69628,
+  "sp_space": "ram",
+
+  "regions": [
+    { "name": "code", "space": "code", "base": 0, "size": 65536, "is_mmio": false },
+    { "name": "ram",  "space": "ram",  "base": 65536, "size": 4096, "is_mmio": false },
+    { "name": "mmio", "space": "mmio", "base": 1073741824, "size": 4096, "is_mmio": true }
+  ],
+
+  "registers": [
+    { "name": "GPIO_OUT", "space": "mmio", "addr": 1073741824, "width": 32,"semantics": "write_trigger", "reset_value": 0 },
+    { "name": "IRQ_ENABLE", "space": "mmio", "addr": 1073741844, "width": 32,"semantics": "plain", "reset_value": 0 },
+    { "name": "IRQ_PENDING", "space": "mmio", "addr": 1073741848, "width": 32,"semantics": "plain", "reset_value": 0 },
+    { "name": "TIMER_CTRL",   "space": "mmio", "addr": 1073741832, "width": 32, "semantics": "write_trigger", "reset_value": 0 },
+    { "name": "TIMER_COUNT",  "space": "mmio", "addr": 1073741836, "width": 32, "semantics": "plain", "reset_value": 0 },
+    { "name": "TIMER_STATUS", "space": "mmio", "addr": 1073741840, "width": 32, "semantics": "plain", "reset_value": 0 },
+    { "name": "TIMER_RELOAD", "space": "mmio", "addr": 1073741852, "width": 32, "semantics": "plain", "reset_value": 1000 }
+  ],
+
+  "pins": [
+    { "name": "PA0", "number": 0, "functions": ["gpio"], "reset_function": 0 }
+  ],
+
+  "interrupts": [
+    { "name": "IRQ0", "number": 1, "vector_addr": 16, "vector_space": "code",
+      "enable_reg": 1073741844, "enable_space": "mmio", "enable_bit": 0,
+      "pending_reg": 1073741848, "pending_space": "mmio", "pending_bit": 0 }
+  ],
+    "timers": [
+    {
+      "name": "TIMER0",
+      "counter": {
+        "bits": 8,
+        "lo_reg": 1073741836,
+        "reg_space": "mmio",
+        "reload_lo_reg": 1073741852
+      },
+      "enable":   { "reg": 1073741832, "bit": 0 },
+      "overflow": { "reg": 1073741840, "bit": 0 },
+      "irq": 1
+    }
+  ]
+}

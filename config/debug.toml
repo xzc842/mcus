@@ -1,0 +1,19 @@
+# 调试用配置：启动即暂停，缩小流容量便于观察背压，开详细日志
+
+[simulator]
+shm_name = "/mcus_shm_debug"
+stream_name = "/mcus_stream_debug"
+stream_capacity = 16
+start_paused = false
+control_poll_interval = 16
+
+
+[crystal]
+frequency_hz = 16000000
+cycles_per_instruction = 4
+
+
+[debug]
+log_level = "debug"
+log_output = "stderr"
+dump_prefix = "/tmp/mcus_dump_debug"
