@@ -156,7 +156,7 @@
     { "name": "TMR0",   "number": 1,  "vector_addr": 11,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 1, "pending_reg": 136, "pending_space": "sfr", "pending_bit": 5 },
     { "name": "INT1",   "number": 2,  "vector_addr": 19,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 2, "pending_reg": 136, "pending_space": "sfr", "pending_bit": 3 },
     { "name": "TMR1",   "number": 3,  "vector_addr": 27,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 3, "pending_reg": 136, "pending_space": "sfr", "pending_bit": 7 },
-    { "name": "UART0",  "number": 4,  "vector_addr": 35,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 152, "pending_space": "sfr", "pending_bit": 0 },
+    { "name": "UART0",  "number": 4,  "vector_addr": 35,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 152, "pending_space": "sfr", "pending_bit": 1 },
     { "name": "TMR2",   "number": 5,  "vector_addr": 43,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 5, "pending_reg": 200, "pending_space": "sfr", "pending_bit": 7 },
     { "name": "SPI0",   "number": 6,  "vector_addr": 51,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 0, "pending_reg": 248, "pending_space": "sfr", "pending_bit": 4 },
     { "name": "TKEY",   "number": 7,  "vector_addr": 59,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 1, "pending_reg": 195, "pending_space": "sfr", "pending_bit": 7 },

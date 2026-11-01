@@ -224,6 +224,12 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
         MmioEvent ev{now, addr, value, width, MmioAccess::Write,
                      static_cast<uint32_t>(sidx)};
         if (!stream_.push(ev)) MCUS_WARN("event stream full");
+        // SBUF 写：置 TI（SCON bit1），触发 UART0 中断
+        if (space == "sfr" && addr == 0x99) {
+            uint8_t scon = static_cast<uint8_t>(shm_.read_reg("sfr", 0x98, 8));
+            scon |= 0x02;
+            shm_.write_reg("sfr", 0x98, scon, 8);
+        }
     }
 }
 
@@ -357,7 +363,7 @@ void Cpu::check_reset_pin() {
 VirtTime Cpu::step() {
     if (halted_.load()) return 0;
     if (paused_.load()) return 0;
-    char buf[64];
+        char buf[64];
     std::snprintf(buf, sizeof(buf), "step pc=0x%04X sp=0x%02X",
                   static_cast<unsigned>(regs_.pc),
                   static_cast<unsigned>(read_sp()));

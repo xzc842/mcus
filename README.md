@@ -11,49 +11,30 @@
 - **流满背压暂停**：事件流满时 CPU 线程暂停推进，避免丢事件导致行为不一致。
 - **复位由 RST 引脚触发**：外部程序写 `reset_pin`，模拟器在指令边界检测并执行复位序列。
 
-## 目录结构
+## 功能验证进度
 
-```
-mcus/
-├── CMakeLists.txt
-├── README.md
-├── config/
-│   ├── example.toml
-│   └── debug.toml
-├── models/
-│   ├── dummy.json
-│   ├── ch552g.json
-│   └── schema.md
-├── include/mcus/
-│   ├── types.h
-│   ├── model.h
-│   ├── shared_memory.h
-│   ├── event_stream.h
-│   ├── cpu.h
-│   ├── simulator.h
-│   ├── config.h
-│   ├── instruction.h
-│   └── log.h
-├── src/
-│   ├── model.cpp
-│   ├── shared_memory.cpp
-│   ├── event_stream.cpp
-│   ├── cpu.cpp
-│   ├── simulator.cpp
-│   ├── config.cpp
-│   ├── isa_registry.cpp
-│   ├── isa_8051.cpp
-│   └── log.cpp
-├── tests/
-│   ├── CMakeLists.txt
-│   ├── test_event_stream.cpp
-│   ├── test_shared_memory.cpp
-│   ├── test_cpu_minimal.cpp
-│   ├── test_timer.cpp
-│   └── test_ch552g.cpp
-└── tools/
-    └── dump_shm.cpp
-```
+CH552G 功能多，当前验证进度：
+
+| 功能 | 状态 | 固件/说明 |
+|---|---|---|
+| GPIO | ✅ | `blink.bin` |
+| `MOVX` / xRAM | ✅ | `xram_test.bin` |
+| `MOVC` / code 读 | ✅ | `movc_test.bin` |
+| 算术 / `DA A` | ✅ | `arith_test.bin` |
+| 位操作（`iram` 位地址） | ✅ | `bit_test.bin` |
+| `Timer0` + 中断 | ✅ | `timer_test.bin` |
+| `INT0` 外部中断 | ✅ | `int0_test.bin` |
+| `UART0` | ❌ | `uart_test.bin`，`SCON` 写 `0x80` 不是 `0x50` |
+| `UART1` | ⬜ | 未测试 |
+| `SPI` | ⬜ | 未测试 |
+| `PWM` | ⬜ | 未测试 |
+| `ADC` | ⬜ | 未测试 |
+| `TKEY` | ⬜ | 未测试 |
+| `USB` | ⬜ | 未测试（协议未模拟） |
+| `WDOG` | ⬜ | 未测试 |
+| `Timer2` 及捕捉 | ⬜ | 未测试 |
+
+`ctest` 5/5 通过（`event_stream`、`shared_memory`、`cpu_minimal`、`timer`、`ch552g`）。
 
 ## 构建与运行
 
@@ -175,49 +156,25 @@ ctest --test-dir build --output-on-failure
 
 当前 5/5 通过。
 
-## 已验证的固件
-
-`blink.bin`（SDCC 4.5.0，`-mmcs51 --model-small`）：
-
-```c
-#include <8051.h>
-
-static void delay_1s(void) {
-    volatile unsigned char i, j;
-    for (i = 0; i < 126; ++i)
-        for (j = 0; j < 126; ++j)
-            __asm__("nop");
-}
-
-void main(void) {
-    SP = 0x30;
-    P1_0 = 1;
-    while (1) {
-        P1_0 = !P1_0;
-        delay_1s();
-    }
-}
-```
-
-在 `ch552g.json` + `example.toml` 下，`P1` 在 `0xFE`/`0xFF` 之间交替，`virtual_time` 每秒约 12 万步，`delay` 约 0.8 秒翻转一次。
-
 ## 当前遗留问题
 
-### 1. `virtual_time` 推进速度
+### 1. 串口 `UART0` 未通过
 
-`virtual_time_ += dt`，`dt = cpu_.step()` 返回的 `cycles`。`ch552g.json` 的 `cycles_per_instruction=1`，每步 `dt=1`，`virtual_time` 每秒涨 = CPU 每秒步数。
+`uart_test.bin` 的 `SCON = 0x50` 未生效：`case 0x75` 的 `fetch(bus, 0xD5)` 返回 `0x80`，`imm` 不是 `0x50`，`SCON` 写成 `0x80`（模式 0），`SBUF` 写不推 `TI`，`uart_isr` 不触发。**`uart_test.bin` 的 `0xD5=0x50`，`load_firmware` 后 `code[0xD5]` 应为 `0x50`，但 `fetch` 返回 `0x80`。待查 `code_blk_->data[0xD5]` 被谁改成 `0x80`，或 `fetch` 的 `pc+2` 偏移错。**
 
-当前 `virtual_time` 每秒约 12 万步，`delay` 126×126 约 0.8 秒翻转。**要严格 1 秒，`delay` 改成 `i<140, j<140`（约 1 秒）。**
+### 2. 通信/模拟外设未验证
 
-### 2. `check_interrupt` 每步调的性能
+`UART1`、`SPI`、`PWM`、`ADC`、`TKEY`、`USB`、`WDOG`、`Timer2` 及捕捉均未写固件验证。模拟器只实现寄存器语义和事件推流，**USB 协议、ADC 采样、SPI 时序未模拟**，这些外设的固件测试需外部程序配合写共享内存。
 
-`check_interrupt` 每步遍历 14 个中断，每个 `read_reg` 是 `unordered_map::find`。当前 `virtual_time` 每秒 12 万步，可接受。**如果嫌慢，优化 `read_reg` 的 `find`（缓存 `reg_offset_`，直接读 `base_ + mmio_offset_ + off`），而不是跳过 `check_interrupt`。** 单步调试和 `test_cpu_minimal` 依赖每步调。
+### 3. `check_interrupt` 每步调的性能
 
-### 3. 外部监控程序偏移依赖
+`check_interrupt` 每步遍历 14 个中断，每个 `read_reg` 走 `reg_offset_fast_` O(1)。当前 `virtual_time` 每秒 28 万步（`clock_step_interval=100`），可接受。单步调试和 `test_cpu_minimal` 依赖每步调，**不要改成每 N 步**。性能优化已做：`reg_offset_fast_` 直接寻址、`read8` 缓存 `MemBlock*`、`check_interrupt` 先查 `EA`。
+
+### 4. 外部监控程序偏移依赖
 
 `ch552g_monitor/main.cpp` 里 `kRegisterCount` 硬编码为模型寄存器数量。如果 `ch552g.json` 的 `registers` 数组长度变化，`pins` 偏移会错。后续应改为读模型文件计算偏移，或在共享内存布局中导出偏移描述。
 
-### 4. `Cpu::write8("code", ...)` 保护
+### 5. `Cpu::write8("code", ...)` 保护
 
 `Cpu::write8` 已对 `code` 区写操作拒绝并 WARN，防止误写固件。**保留此保护。**
 
@@ -228,4 +185,7 @@ void main(void) {
 3. **`dump_shm` 构造 `reset_all`**：`dump_shm` 打开共享内存时 `memset` + `reset_all`，把 `P1` 刷回 `0xFF`。修：`SharedMemory` 加 `create` 参数，`dump_shm` 传 `false`。
 4. **`check_interrupt` 每 100 步**：单步调试和 `test_cpu_minimal` 依赖每步调。修：`check_interrupt` 每步调，性能用 `advance_clock` 每 100 步优化。
 5. **日志十进制/十六进制混淆**：`std::to_string` 十进制前面加 `0x`，`pc=0x76` 实际是 `0x4C`，误导排查。修：日志用 `%04X`/`%02X`。
-
+6. **`pc` 每步 `store` 性能**：`pc`/`virtual_time` 每步 `std::atomic::store` 有内存屏障。修：`store` 加 `std::memory_order_relaxed`，单步调试 `pc` 每步更新，性能 28 万步/秒。
+7. **`reg_offset_` 的 `unordered_map::find` 慢**：`read_reg`/`write_reg` 每次 `find`。修：`reg_offset_fast_` 按 `(space_idx+1)*256 + addr` 直接寻址，`addr >= 256` 的 `mmio` 走 `reg_offset_` 回退。
+8. **`read8` 的 `find_region`/`mem_offset` 慢**：`fetch` 每次 `read8("code", addr)` 走 `find_region`。修：`Cpu` 缓存 `code_blk_`/`iram_blk_`/`xram_blk_`，`read8` 快速路径。
+9. **`SBUF` 写不置 `TI`**：`SBUF` 是 `fifo`，写只推事件，不置 `TI`。修：`handle_mmio_write` 的 `fifo` 分支，`SBUF`（`sfr` 0x99）写后置 `SCON` 的 `TI`（bit1）。`ch552g.json` 的 `UART0` `pending_bit` 改 `1`（`TI`）。
