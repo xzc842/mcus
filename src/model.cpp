@@ -102,6 +102,7 @@ Model Model::load_from_file(const std::string& path) {
         d.pending_reg = u32(irq, "pending_reg");
         d.pending_space = str(irq, "pending_space", "sfr");
         d.pending_bit = static_cast<uint8_t>(u32(irq, "pending_bit"));
+        d.clear_pending = b(irq, "clear_pending", true);
         m.interrupts.push_back(std::move(d));
     }
     for (const auto& t : j.value("timers", json::array())) {
@@ -117,11 +118,53 @@ Model Model::load_from_file(const std::string& path) {
         td.counter.up = b(c, "up", true);
         td.enable.reg = u32(t.at("enable"), "reg");
         td.enable.bit = static_cast<uint8_t>(u32(t.at("enable"), "bit"));
+        td.enable.space = str(t.at("enable"), "space", td.counter.reg_space);
         td.overflow.reg = u32(t.at("overflow"), "reg");
         td.overflow.bit = static_cast<uint8_t>(u32(t.at("overflow"), "bit"));
+        td.overflow.space = str(t.at("overflow"), "space", td.counter.reg_space);
         td.irq = u32(t, "irq");
         td.overflow_action = str(t, "overflow_action", "reload");
         m.timers.push_back(std::move(td));
+    }
+
+    // arch_desc
+    if (j.contains("arch_desc")) {
+        const auto& ad = j.at("arch_desc");
+        if (ad.contains("global_irq_enable")) {
+            const auto& ge = ad.at("global_irq_enable");
+            m.arch_desc.global_irq_enable.present = true;
+            m.arch_desc.global_irq_enable.space = str(ge, "space", "sfr");
+            m.arch_desc.global_irq_enable.reg = u32(ge, "reg", 0);
+            m.arch_desc.global_irq_enable.bit = static_cast<uint8_t>(u32(ge, "bit", 0));
+        }
+        m.arch_desc.irq_push_bytes = static_cast<uint8_t>(u32(ad, "irq_push_bytes", 2));
+        if (ad.contains("fast_spaces")) {
+            for (const auto& v : ad.at("fast_spaces"))
+                m.arch_desc.fast_spaces.push_back(v.get<std::string>());
+        }
+        m.arch_desc.reset_space = str(ad, "reset_space", "code");
+        m.arch_desc.reset_vector = u32(ad, "reset_vector", 0);
+        m.arch_desc.sp_space = str(ad, "sp_space", "iram");
+        m.arch_desc.initial_sp = u32(ad, "initial_sp", 7);
+        m.arch_desc.sp_reg = u32(ad, "sp_reg", 0x81);
+        m.arch_desc.sp_reg_space = str(ad, "sp_reg_space", "sfr");
+        m.arch_desc.has_pc_reg = b(ad, "has_pc_reg", false);
+        m.arch_desc.pc_reg_space = str(ad, "pc_reg_space", "sfr");
+        m.arch_desc.pc_reg_lo = u32(ad, "pc_reg_lo", 0);
+        m.arch_desc.pc_reg_hi = u32(ad, "pc_reg_hi", 0);
+    } else {
+        m.arch_desc.reset_space = m.reset_space;
+        m.arch_desc.reset_vector = m.reset_vector;
+        m.arch_desc.sp_space = m.sp_space;
+        m.arch_desc.initial_sp = m.initial_sp;
+        m.arch_desc.fast_spaces = {"code", "iram", "xram"};
+        m.arch_desc.irq_push_bytes = 2;
+        m.arch_desc.sp_reg = 0x81;
+        m.arch_desc.sp_reg_space = "sfr";
+        m.arch_desc.global_irq_enable.present = true;
+        m.arch_desc.global_irq_enable.space = "sfr";
+        m.arch_desc.global_irq_enable.reg = 0xA8;
+        m.arch_desc.global_irq_enable.bit = 7;
     }
 
     for (size_t i = 0; i < m.registers.size(); ++i)
@@ -225,20 +268,24 @@ const MemoryRegion* Model::find_region(const SpaceId& space, Addr addr) const {
         if (r.space == space && r.contains(addr)) return &r;
     return nullptr;
 }
+
 const RegisterDesc* Model::find_register(const SpaceId& space, Addr addr) const {
     auto it = reg_index.find(reg_key(space, addr));
     if (it == reg_index.end()) return nullptr;
     return &registers[it->second];
 }
+
 const RegisterDesc* Model::find_register_by_name(const std::string& name) const {
     for (const auto& rd : registers)
         if (rd.name == name) return &rd;
     return nullptr;
 }
+
 const InterruptDesc* Model::find_interrupt(uint32_t number) const {
     for (const auto& irq : interrupts) if (irq.number == number) return &irq;
     return nullptr;
 }
+
 bool Model::resolve_bit_addr(Addr bit_addr, SpaceId& space,
                              Addr& byte_addr, uint8_t& bit) const {
     if (bit_addr < 0x80) {
@@ -252,6 +299,7 @@ bool Model::resolve_bit_addr(Addr bit_addr, SpaceId& space,
     bit = static_cast<uint8_t>(bit_addr & 0x07);
     return find_register(space, byte_addr) != nullptr;
 }
+
 size_t Model::mmio_area_size() const {
     size_t total = 0;
     for (const auto& rd : registers) {
@@ -260,7 +308,9 @@ size_t Model::mmio_area_size() const {
     }
     return total;
 }
+
 size_t Model::pin_area_size() const { return pins.size() * 12; }
+
 size_t Model::irq_bitmap_size() const {
     if (interrupts.empty()) return 4;
     return ((interrupts.size() + 31) / 32) * 4;

@@ -954,17 +954,18 @@ private:
     uint8_t fetch(MemoryBus& bus, Addr addr) {
         return bus.read8("code", addr);
     }
-
     void push(MemoryBus& bus, uint8_t v) {
-        uint8_t sp = static_cast<uint8_t>(bus.read8("sfr", 0x81) + 1);
-        bus.write8("sfr", 0x81, sp);
-        bus.write8("iram", sp, v);
+        uint8_t sp = static_cast<uint8_t>(
+            bus.read8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg) + 1);
+        bus.write8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg, sp);
+        bus.write8(model_.arch_desc.sp_space, sp, v);
     }
 
     uint8_t pop(MemoryBus& bus) {
-        uint8_t sp = bus.read8("sfr", 0x81);
-        uint8_t v = bus.read8("iram", sp);
-        bus.write8("sfr", 0x81, static_cast<uint8_t>(sp - 1));
+        uint8_t sp = bus.read8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg);
+        uint8_t v = bus.read8(model_.arch_desc.sp_space, sp);
+        bus.write8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg,
+                   static_cast<uint8_t>(sp - 1));
         return v;
     }
 

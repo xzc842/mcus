@@ -13,7 +13,6 @@ Simulator::Simulator(Model model, std::vector<uint8_t> firmware, Config cfg)
       shm_(model_, cfg_.simulator.shm_name),
       stream_(cfg_.simulator.stream_name, cfg_.simulator.stream_capacity),
       cpu_(model_, shm_, stream_) {
-    cfg_.apply_to_model(model_);
     cpu_.load_firmware(firmware_);
     if (cfg_.simulator.start_paused) {
         shm_.control()->status.store(static_cast<uint32_t>(ControlStatus::Paused));
@@ -135,50 +134,45 @@ void Simulator::do_reset() {
 void Simulator::advance_clock(VirtTime delta) {
     for (const auto& t : model_.timers) {
         const auto& sp = t.counter.reg_space;
-        uint32_t ctrl = shm_.read_reg(sp, t.enable.reg, 32);
+        uint32_t ctrl = shm_.read_reg(t.enable.space, t.enable.reg, 32);
         if (!(ctrl & (1u << t.enable.bit))) continue;
 
         uint32_t lo = shm_.read_reg(sp, t.counter.lo_reg, 32);
-        uint32_t hi = t.counter.bits > 8
-                          ? shm_.read_reg(sp, t.counter.hi_reg, 32) : 0;
-        uint64_t count = (static_cast<uint64_t>(hi) << 8) | lo;
+        uint32_t hi = (t.counter.bits > 8) ? shm_.read_reg(sp, t.counter.hi_reg, 32) : 0;
+        uint64_t cur = (static_cast<uint64_t>(hi) << 8) | lo;
+        uint64_t mask = (t.counter.bits >= 64) ? ~0ull : ((1ull << t.counter.bits) - 1);
 
-        uint32_t rlo = shm_.read_reg(sp, t.counter.reload_lo_reg, 32);
-        uint32_t rhi = t.counter.bits > 8
-                           ? shm_.read_reg(sp, t.counter.reload_hi_reg, 32) : 0;
-        uint64_t reload = (static_cast<uint64_t>(rhi) << 8) | rlo;
-        uint64_t max_val = (t.counter.bits >= 64)
-                               ? ~0ull
-                               : ((1ull << t.counter.bits) - 1);
-        if (reload == 0) reload = max_val + 1;
-
-        uint64_t next = count + delta;
-        while (next > max_val) {
-            next -= (max_val + 1);
-            uint32_t st = shm_.read_reg(sp, t.overflow.reg, 32);
-            st |= (1u << t.overflow.bit);
-            shm_.write_reg(sp, t.overflow.reg, st, 32);
-            const InterruptDesc* irq = model_.find_interrupt(t.irq);
-            if (irq) {
-                uint32_t pend = shm_.read_reg(irq->pending_space, irq->pending_reg, 32);
-                pend |= (1u << irq->pending_bit);
-                shm_.write_reg(irq->pending_space, irq->pending_reg, pend, 32);
-                uint8_t* bm = shm_.interrupt_bitmap();
-                size_t byte = irq->number / 8, bit = irq->number % 8;
-                if (byte < shm_.interrupt_bitmap_size())
-                    bm[byte] |= static_cast<uint8_t>(1u << bit);
+        uint64_t next;
+        bool overflow;
+        if (t.counter.up) {
+            next = (cur + delta) & mask;
+            overflow = ((cur + delta) > mask);
+        } else {
+            if (delta > cur) {
+                next = mask - ((delta - cur - 1) & mask);
+                overflow = true;
+            } else {
+                next = cur - delta;
+                overflow = false;
             }
-            if (t.overflow_action == "stop") {
-                ctrl &= ~(1u << t.enable.bit);
-                shm_.write_reg(sp, t.enable.reg, ctrl, 32);
-                next = 0;
-                break;
-            } else if (t.overflow_action == "reload") {
-                next += reload;
-                if (next > max_val) break;
-            }
-            // "isa"：不回卷，保持 next 当前值，由 ISA 后续写 TL/TH 决定
         }
+
+        if (overflow) {
+            if (t.overflow_action == "reload") {
+                uint32_t rlo = shm_.read_reg(sp, t.counter.reload_lo_reg, 32);
+                uint32_t rhi = (t.counter.bits > 8)
+                                   ? shm_.read_reg(sp, t.counter.reload_hi_reg, 32)
+                                   : 0;
+                next = (static_cast<uint64_t>(rhi) << 8) | rlo;
+            } else if (t.overflow_action == "reset") {
+                shm_.control()->reset_pin.store(1);
+                next = 0;
+            }
+            uint32_t st = shm_.read_reg(t.overflow.space, t.overflow.reg, 32);
+            st |= (1u << t.overflow.bit);
+            shm_.write_reg(t.overflow.space, t.overflow.reg, st, 32);
+        }
+
         shm_.write_reg(sp, t.counter.lo_reg,
                        static_cast<uint32_t>(next & 0xFF), 32);
         if (t.counter.bits > 8)

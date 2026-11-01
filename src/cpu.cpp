@@ -1,6 +1,7 @@
 #include "mcus/cpu.h"
 #include "mcus/log.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 
@@ -33,12 +34,18 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
             }
         }
     }
-    auto it = memory_.find("code");
-    if (it != memory_.end()) code_blk_ = &it->second;
-    it = memory_.find("iram");
-    if (it != memory_.end()) iram_blk_ = &it->second;
-    it = memory_.find("xram");
-    if (it != memory_.end()) xram_blk_ = &it->second;
+
+    for (const auto& sp : model_.arch_desc.fast_spaces) {
+        auto it = memory_.find(sp);
+        if (it != memory_.end()) fast_blocks_[sp] = &it->second;
+    }
+    if (model_.arch_desc.global_irq_enable.present) {
+        has_global_irq_enable_ = true;
+        global_irq_space_ = model_.arch_desc.global_irq_enable.space;
+        global_irq_reg_ = model_.arch_desc.global_irq_enable.reg;
+        global_irq_bit_ = model_.arch_desc.global_irq_enable.bit;
+    }
+
     reset();
 }
 
@@ -58,7 +65,8 @@ size_t Cpu::mem_offset(const SpaceId& space, Addr addr) const {
 }
 
 void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
-    const MemoryRegion* tgt = model_.find_region(model_.reset_space, model_.reset_vector);
+    const MemoryRegion* tgt = model_.find_region(model_.arch_desc.reset_space,
+                                                  model_.arch_desc.reset_vector);
     if (!tgt) throw std::runtime_error("reset_vector region missing");
     size_t off = mem_offset(tgt->space, tgt->base);
     if (off == SIZE_MAX) throw std::runtime_error("firmware target block missing");
@@ -72,18 +80,16 @@ void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
 
 void Cpu::reset() {
     regs_ = CpuRegisters{};
-    regs_.pc = model_.reset_vector;
+    regs_.pc = model_.arch_desc.reset_vector;
     halted_.store(false);
     paused_.store(false);
     irq_stack_.clear();
     shm_.reset_all();
-
-    // SP 单一权威来源：SFR 0x81。reset_all 已按寄存器 reset_value 写入，
-    // 这里用 model_.initial_sp 覆盖，确保模型字段与运行时一致。
-    write_sp(static_cast<uint8_t>(model_.initial_sp));
-
+    write_sp(static_cast<uint8_t>(model_.arch_desc.initial_sp));
     shm_.control()->pc.store(regs_.pc);
     shm_.control()->virtual_time.store(0);
+    MCUS_INFO("cpu reset, pc=0x" + std::to_string(regs_.pc) +
+              " sp=0x" + std::to_string(read_sp()));
 }
 
 size_t Cpu::export_memory(const SpaceId& space, Addr addr, size_t len,
@@ -97,19 +103,12 @@ size_t Cpu::export_memory(const SpaceId& space, Addr addr, size_t len,
 }
 
 uint8_t Cpu::read8(const SpaceId& space, Addr addr) {
-    if (space == "code" && code_blk_) {
+    auto it = fast_blocks_.find(space);
+    if (it != fast_blocks_.end()) {
         size_t off = addr;
-        if (off < code_blk_->data.size()) return code_blk_->data[off];
-        return 0;
-    }
-    if (space == "iram" && iram_blk_) {
-        size_t off = addr & 0xFF;
-        if (off < iram_blk_->data.size()) return iram_blk_->data[off];
-        return 0;
-    }
-    if (space == "xram" && xram_blk_) {
-        size_t off = addr & 0x3FF;
-        if (off < xram_blk_->data.size()) return xram_blk_->data[off];
+        if (space == "iram" || space == "xram" || space == "ram")
+            off = addr & (it->second->data.size() - 1);
+        if (off < it->second->data.size()) return it->second->data[off];
         return 0;
     }
     const MemoryRegion* r = model_.find_region(space, addr);
@@ -138,19 +137,17 @@ uint32_t Cpu::read32(const SpaceId& space, Addr addr) {
 }
 
 void Cpu::write8(const SpaceId& space, Addr addr, uint8_t v) {
-    if (space == "code") {
-        MCUS_WARN("write to code space at 0x" + std::to_string(addr) +
+    if (space == model_.arch_desc.reset_space) {
+        MCUS_WARN("write to reset space at 0x" + std::to_string(addr) +
                   " ignored (firmware protection)");
         return;
     }
-    if (space == "iram" && iram_blk_) {
-        size_t off = addr & 0xFF;
-        if (off < iram_blk_->data.size()) iram_blk_->data[off] = v;
-        return;
-    }
-    if (space == "xram" && xram_blk_) {
-        size_t off = addr & 0x3FF;
-        if (off < xram_blk_->data.size()) xram_blk_->data[off] = v;
+    auto it = fast_blocks_.find(space);
+    if (it != fast_blocks_.end()) {
+        size_t off = addr;
+        if (space == "iram" || space == "xram" || space == "ram")
+            off = addr & (it->second->data.size() - 1);
+        if (off < it->second->data.size()) it->second->data[off] = v;
         return;
     }
     const MemoryRegion* r = model_.find_region(space, addr);
@@ -175,11 +172,11 @@ void Cpu::write32(const SpaceId& space, Addr addr, uint32_t v) {
 }
 
 uint8_t Cpu::read_sp() {
-    return read8("sfr", 0x81);
+    return read8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg);
 }
 
 void Cpu::write_sp(uint8_t v) {
-    write8("sfr", 0x81, v);
+    write8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg, v);
 }
 
 void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uint8_t width) {
@@ -224,11 +221,18 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
         MmioEvent ev{now, addr, value, width, MmioAccess::Write,
                      static_cast<uint32_t>(sidx)};
         if (!stream_.push(ev)) MCUS_WARN("event stream full");
+
         // SBUF 写：置 TI（SCON bit1），触发 UART0 中断
         if (space == "sfr" && addr == 0x99) {
             uint8_t scon = static_cast<uint8_t>(shm_.read_reg("sfr", 0x98, 8));
             scon |= 0x02;
             shm_.write_reg("sfr", 0x98, scon, 8);
+        }
+        // SPI0_DATA 写：置 SPIF（SPI0_STAT bit4）
+        if (space == "sfr" && addr == 0xF9) {
+            uint8_t stat = static_cast<uint8_t>(shm_.read_reg("sfr", 0xF8, 8));
+            stat |= 0x10;
+            shm_.write_reg("sfr", 0xF8, stat, 8);
         }
     }
 }
@@ -244,7 +248,8 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
     if (reg->semantics == RegSemantics::WriteOnly)
         return reg->reset_value;
     uint32_t v = shm_.read_reg(space, addr, width);
-    if (reg->semantics == RegSemantics::ReadClear) shm_.write_reg(space, addr, 0, width);
+    if (reg->semantics == RegSemantics::ReadClear)
+        shm_.write_reg(space, addr, 0, width);
     return v;
 }
 
@@ -279,7 +284,6 @@ void Cpu::check_inject_slots() {
     }
 }
 
-// 按寄存器实际宽度读 MMIO，避免对 8 位寄存器传 32 位宽度。
 static uint32_t read_reg_by_model(const Model& model, SharedMemory& shm,
                                   const SpaceId& space, Addr addr) {
     const RegisterDesc* r = model.find_register(space, addr);
@@ -295,10 +299,9 @@ static void write_reg_by_model(const Model& model, SharedMemory& shm,
 }
 
 bool Cpu::check_interrupt() {
-    // 只有模型定义了 IE 寄存器时才检查 EA；dummy 模型无 IE，跳过
-    if (model_.find_register("sfr", 0xA8)) {
-        uint32_t ie = read_reg_by_model(model_, shm_, "sfr", 0xA8);
-        if (!(ie & 0x80)) return false;
+    if (has_global_irq_enable_) {
+        uint32_t v = read_reg_by_model(model_, shm_, global_irq_space_, global_irq_reg_);
+        if (!(v & (1u << global_irq_bit_))) return false;
     }
     uint8_t* bitmap = shm_.interrupt_bitmap();
     for (const auto& irq : model_.interrupts) {
@@ -318,23 +321,21 @@ bool Cpu::check_interrupt() {
 
 void Cpu::enter_interrupt(const InterruptDesc& irq) {
     MCUS_DEBUG("enter interrupt " + irq.name);
-
-    // 8051 中断响应：压 2 字节 PC，先低后高，SP 每次 +1。
-    // 必须与 RETI 的两次 pop 对称，且必须走 SFR SP。
     irq_stack_.push_back({ read8("sfr", 0xB8) });
 
     uint8_t sp = read_sp();
-    sp = static_cast<uint8_t>(sp + 1);
-    write_sp(sp);
-    write8("iram", sp, static_cast<uint8_t>(regs_.pc & 0xFF));
+    for (int i = 0; i < model_.arch_desc.irq_push_bytes; ++i) {
+        sp = static_cast<uint8_t>(sp + 1);
+        write_sp(sp);
+        write8(model_.arch_desc.sp_space, sp,
+               static_cast<uint8_t>((regs_.pc >> (8 * i)) & 0xFF));
+    }
 
-    sp = static_cast<uint8_t>(sp + 1);
-    write_sp(sp);
-    write8("iram", sp, static_cast<uint8_t>((regs_.pc >> 8) & 0xFF));
-
-    uint32_t pending = read_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg);
-    pending &= ~(1u << irq.pending_bit);
-    write_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg, pending);
+    if (irq.clear_pending) {
+        uint32_t pending = read_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg);
+        pending &= ~(1u << irq.pending_bit);
+        write_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg, pending);
+    }
 
     uint8_t* bitmap = shm_.interrupt_bitmap();
     size_t byte = irq.number / 8, bit = irq.number % 8;
@@ -354,7 +355,7 @@ void Cpu::on_reti() {
 void Cpu::check_reset_pin() {
     auto* ctl = shm_.control();
     if (ctl->reset_pin.load() != 0) {
-        MCUS_WARN("reset pin asserted, resetting");
+        MCUS_INFO("reset pin asserted");
         reset();
         ctl->reset_pin.store(0);
     }
@@ -363,11 +364,6 @@ void Cpu::check_reset_pin() {
 VirtTime Cpu::step() {
     if (halted_.load()) return 0;
     if (paused_.load()) return 0;
-        char buf[64];
-    std::snprintf(buf, sizeof(buf), "step pc=0x%04X sp=0x%02X",
-                  static_cast<unsigned>(regs_.pc),
-                  static_cast<unsigned>(read_sp()));
-    MCUS_TRACE(buf);
 
     check_reset_pin();
     check_inject_slots();

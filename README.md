@@ -11,30 +11,42 @@
 - **流满背压暂停**：事件流满时 CPU 线程暂停推进，避免丢事件导致行为不一致。
 - **复位由 RST 引脚触发**：外部程序写 `reset_pin`，模拟器在指令边界检测并执行复位序列。
 
-## 功能验证进度
+## 功能列表
 
-CH552G 功能多，当前验证进度：
+### CH552G(8051) 
+已验证：
 
-| 功能 | 状态 | 固件/说明 |
+| 功能 | 测试 | 结果 |
 |---|---|---|
-| GPIO | ✅ | `blink.bin` |
-| `MOVX` / xRAM | ✅ | `xram_test.bin` |
-| `MOVC` / code 读 | ✅ | `movc_test.bin` |
-| 算术 / `DA A` | ✅ | `arith_test.bin` |
-| 位操作（`iram` 位地址） | ✅ | `bit_test.bin` |
-| `Timer0` + 中断 | ✅ | `timer_test.bin` |
-| `INT0` 外部中断 | ✅ | `int0_test.bin` |
-| `UART0` | ❌ | `uart_test.bin`，`SCON` 写 `0x80` 不是 `0x50` |
-| `UART1` | ⬜ | 未测试 |
-| `SPI` | ⬜ | 未测试 |
-| `PWM` | ⬜ | 未测试 |
-| `ADC` | ⬜ | 未测试 |
-| `TKEY` | ⬜ | 未测试 |
-| `USB` | ⬜ | 未测试（协议未模拟） |
-| `WDOG` | ⬜ | 未测试 |
-| `Timer2` 及捕捉 | ⬜ | 未测试 |
+| GPIO | `blink.bin` | ✅ |
+| MOVX（xRAM） | `xram_test` | ✅ |
+| MOVC（code 读） | `movc_test` | ✅ |
+| 算术（ADD/DA A） | `arith_test` | ✅ |
+| 位操作（iram 位地址） | `bit_test` | ✅ |
+| Timer0 中断 | `timer_test` | ✅ |
+| Timer1 中断 | `timer1_test` | ✅ |
+| Timer2 中断 + reload | `timer2_test` | ✅ |
+| 外部中断 INT0 | `int0_test` | ✅ |
+| SPI0 寄存器 | `spi0_test` | ✅ |
+| PWM 寄存器 | `pwm_test` | ✅ |
+| ADC 寄存器 | `adc_test` | ✅ |
+| TKEY 寄存器 | `tkey_test` | ✅ |
+| WDOG 寄存器 | `wdog_test` | ✅ |
+| WDOG 溢出复位 | `wdog_test` | ✅ |
+| USB 寄存器 | `usb_test` | ✅ |
 
-`ctest` 5/5 通过（`event_stream`、`shared_memory`、`cpu_minimal`、`timer`、`ch552g`）。
+部分验证：
+
+| 功能 | 测试 | 状态 |
+|---|---|---|
+| UART0 | `uart_test` | SCON/SBUF 寄存器通，TI 中断/P1 采样待查 |
+| UART1 | `uart1_test` | SCON1/SBUF1/SBAUD1 寄存器通，TI1 中断待查 |
+| SPI0 中断 | `spi0_test` | SPI0_DATA/CTRL 寄存器通，SPIF 中断/jnb acc.4 待查 |
+
+未实现：
+
+PWM/ADC/TKEY/GPIO 中断（需要 advance_clock 或 handle_mmio_write 置挂起位）、USB 协议层。
+
 
 ## 构建与运行
 
@@ -155,37 +167,3 @@ ctest --test-dir build --output-on-failure
 - `test_ch552g`：CH552G 模型加载、别名寄存器、位地址解析、定时器描述。
 
 当前 5/5 通过。
-
-## 当前遗留问题
-
-### 1. 串口 `UART0` 未通过
-
-`uart_test.bin` 的 `SCON = 0x50` 未生效：`case 0x75` 的 `fetch(bus, 0xD5)` 返回 `0x80`，`imm` 不是 `0x50`，`SCON` 写成 `0x80`（模式 0），`SBUF` 写不推 `TI`，`uart_isr` 不触发。**`uart_test.bin` 的 `0xD5=0x50`，`load_firmware` 后 `code[0xD5]` 应为 `0x50`，但 `fetch` 返回 `0x80`。待查 `code_blk_->data[0xD5]` 被谁改成 `0x80`，或 `fetch` 的 `pc+2` 偏移错。**
-
-### 2. 通信/模拟外设未验证
-
-`UART1`、`SPI`、`PWM`、`ADC`、`TKEY`、`USB`、`WDOG`、`Timer2` 及捕捉均未写固件验证。模拟器只实现寄存器语义和事件推流，**USB 协议、ADC 采样、SPI 时序未模拟**，这些外设的固件测试需外部程序配合写共享内存。
-
-### 3. `check_interrupt` 每步调的性能
-
-`check_interrupt` 每步遍历 14 个中断，每个 `read_reg` 走 `reg_offset_fast_` O(1)。当前 `virtual_time` 每秒 28 万步（`clock_step_interval=100`），可接受。单步调试和 `test_cpu_minimal` 依赖每步调，**不要改成每 N 步**。性能优化已做：`reg_offset_fast_` 直接寻址、`read8` 缓存 `MemBlock*`、`check_interrupt` 先查 `EA`。
-
-### 4. 外部监控程序偏移依赖
-
-`ch552g_monitor/main.cpp` 里 `kRegisterCount` 硬编码为模型寄存器数量。如果 `ch552g.json` 的 `registers` 数组长度变化，`pins` 偏移会错。后续应改为读模型文件计算偏移，或在共享内存布局中导出偏移描述。
-
-### 5. `Cpu::write8("code", ...)` 保护
-
-`Cpu::write8` 已对 `code` 区写操作拒绝并 WARN，防止误写固件。**保留此保护。**
-
-## 已修复的问题（记录）
-
-1. **`SP` 双状态**：`regs_.sp` 和 SFR `0x81` 不同步。修：SP 只用 SFR `0x81`，`enter_interrupt` 压 2 字节 PC，与 `RETI` 对称。
-2. **`write_trigger` 读 `reset_value`**：`handle_mmio_read` 对 `write_trigger` 返回 `reset_value`，`P1` 读永远 `0xFF`，`CPL` 永远写 `0xFE`。修：`write_trigger` 读 `shm_`，只 `write_only` 返回 `reset_value`。
-3. **`dump_shm` 构造 `reset_all`**：`dump_shm` 打开共享内存时 `memset` + `reset_all`，把 `P1` 刷回 `0xFF`。修：`SharedMemory` 加 `create` 参数，`dump_shm` 传 `false`。
-4. **`check_interrupt` 每 100 步**：单步调试和 `test_cpu_minimal` 依赖每步调。修：`check_interrupt` 每步调，性能用 `advance_clock` 每 100 步优化。
-5. **日志十进制/十六进制混淆**：`std::to_string` 十进制前面加 `0x`，`pc=0x76` 实际是 `0x4C`，误导排查。修：日志用 `%04X`/`%02X`。
-6. **`pc` 每步 `store` 性能**：`pc`/`virtual_time` 每步 `std::atomic::store` 有内存屏障。修：`store` 加 `std::memory_order_relaxed`，单步调试 `pc` 每步更新，性能 28 万步/秒。
-7. **`reg_offset_` 的 `unordered_map::find` 慢**：`read_reg`/`write_reg` 每次 `find`。修：`reg_offset_fast_` 按 `(space_idx+1)*256 + addr` 直接寻址，`addr >= 256` 的 `mmio` 走 `reg_offset_` 回退。
-8. **`read8` 的 `find_region`/`mem_offset` 慢**：`fetch` 每次 `read8("code", addr)` 走 `find_region`。修：`Cpu` 缓存 `code_blk_`/`iram_blk_`/`xram_blk_`，`read8` 快速路径。
-9. **`SBUF` 写不置 `TI`**：`SBUF` 是 `fifo`，写只推事件，不置 `TI`。修：`handle_mmio_write` 的 `fifo` 分支，`SBUF`（`sfr` 0x99）写后置 `SCON` 的 `TI`（bit1）。`ch552g.json` 的 `UART0` `pending_bit` 改 `1`（`TI`）。

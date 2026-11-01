@@ -52,6 +52,7 @@ struct InterruptDesc {
     Addr pending_reg = 0;
     SpaceId pending_space = "sfr";
     uint8_t pending_bit = 0;
+    bool clear_pending = true;
 };
 
 struct CounterDesc {
@@ -67,10 +68,43 @@ struct CounterDesc {
 struct TimerDesc {
     std::string name;
     CounterDesc counter;
-    struct CtrlBit { Addr reg; uint8_t bit; } enable;
-    struct FlagBit { Addr reg; uint8_t bit; } overflow;
+    struct CtrlBit { Addr reg; uint8_t bit; SpaceId space = "sfr"; } enable;
+    struct FlagBit { Addr reg; uint8_t bit; SpaceId space = "sfr"; } overflow;
     uint32_t irq = 0;
     std::string overflow_action = "reload";
+};
+
+// 架构级描述：换芯片只改这里，不改 Cpu/Simulator
+struct ArchDesc {
+    // 全局中断使能（8051 是 IE bit7，ARM 是 PRIMASK，RISC-V 是 mstatus.MIE）
+    struct GlobalIrqEnable {
+        SpaceId space;
+        Addr reg = 0;
+        uint8_t bit = 0;
+        bool present = false;
+    } global_irq_enable;
+
+    // 中断压栈宽度（8051 压 2 字节 PC，ARM 压 4/8 字节，RISC-V 压 4 字节）
+    uint8_t irq_push_bytes = 2;
+
+    // 快速空间（code/iram/xram，别的架构 flash/ram/eeprom）
+    std::vector<SpaceId> fast_spaces;
+
+    // 复位向量空间/地址
+    SpaceId reset_space = "code";
+    Addr reset_vector = 0;
+
+    // 栈空间/初始 SP
+    SpaceId sp_space = "iram";
+    Addr initial_sp = 0x07;
+    Addr sp_reg = 0x81;          // SP 在 sp_space 里的地址（8051 是 sfr 0x81）
+    SpaceId sp_reg_space = "sfr";
+
+    // PC 寄存器（如果架构有外部 PC 寄存器，8051 没有，用 regs_.pc）
+    bool has_pc_reg = false;
+    SpaceId pc_reg_space = "sfr";
+    Addr pc_reg_lo = 0;
+    Addr pc_reg_hi = 0;
 };
 
 struct Model {
@@ -91,6 +125,8 @@ struct Model {
     std::vector<TimerDesc> timers;
     std::vector<std::string> isa_extensions;
     std::vector<SpaceId> space_order;
+
+    ArchDesc arch_desc;
 
     std::unordered_map<std::string, size_t> reg_index;
 

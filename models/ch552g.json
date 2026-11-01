@@ -9,6 +9,18 @@
   "initial_sp": 7,
   "sp_space": "iram",
   "isa_extensions": ["wch_dptr1_movx"],
+  "arch_desc": {
+    "global_irq_enable": { "space": "sfr", "reg": 168, "bit": 7, "present": true },
+    "irq_push_bytes": 2,
+    "fast_spaces": ["code", "iram", "xram"],
+    "reset_space": "code",
+    "reset_vector": 0,
+    "sp_space": "iram",
+    "initial_sp": 7,
+    "sp_reg": 129,
+    "sp_reg_space": "sfr",
+    "has_pc_reg": false
+  },
 
   "regions": [
     { "name": "code", "space": "code", "base": 0,    "size": 16384, "is_mmio": false },
@@ -156,20 +168,20 @@
     { "name": "TMR0",   "number": 1,  "vector_addr": 11,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 1, "pending_reg": 136, "pending_space": "sfr", "pending_bit": 5 },
     { "name": "INT1",   "number": 2,  "vector_addr": 19,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 2, "pending_reg": 136, "pending_space": "sfr", "pending_bit": 3 },
     { "name": "TMR1",   "number": 3,  "vector_addr": 27,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 3, "pending_reg": 136, "pending_space": "sfr", "pending_bit": 7 },
-    { "name": "UART0",  "number": 4,  "vector_addr": 35,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 152, "pending_space": "sfr", "pending_bit": 1 },
+    { "name": "UART0",  "number": 4,  "vector_addr": 35,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 152, "pending_space": "sfr", "pending_bit": 1, "clear_pending": false },
     { "name": "TMR2",   "number": 5,  "vector_addr": 43,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 5, "pending_reg": 200, "pending_space": "sfr", "pending_bit": 7 },
-    { "name": "SPI0",   "number": 6,  "vector_addr": 51,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 0, "pending_reg": 248, "pending_space": "sfr", "pending_bit": 4 },
+        { "name": "SPI0",   "number": 6,  "vector_addr": 51,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 0, "pending_reg": 248, "pending_space": "sfr", "pending_bit": 4, "clear_pending": false },
     { "name": "TKEY",   "number": 7,  "vector_addr": 59,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 1, "pending_reg": 195, "pending_space": "sfr", "pending_bit": 7 },
     { "name": "USB",    "number": 8,  "vector_addr": 67,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 2, "pending_reg": 216, "pending_space": "sfr", "pending_bit": 1 },
     { "name": "ADC",    "number": 9,  "vector_addr": 75,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 3, "pending_reg": 128, "pending_space": "sfr", "pending_bit": 5 },
-    { "name": "UART1",  "number": 10, "vector_addr": 83,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 192, "pending_space": "sfr", "pending_bit": 1 },
+        { "name": "UART1",  "number": 10, "vector_addr": 83,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 192, "pending_space": "sfr", "pending_bit": 1, "clear_pending": false },
     { "name": "PWMX",   "number": 11, "vector_addr": 91,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 5, "pending_reg": 157, "pending_space": "sfr", "pending_bit": 4 },
     { "name": "GPIO",   "number": 12, "vector_addr": 99,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 6, "pending_reg": 198, "pending_space": "sfr", "pending_bit": 6 },
     { "name": "WDOG",   "number": 13, "vector_addr": 107, "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 7, "pending_reg": 185, "pending_space": "sfr", "pending_bit": 5 }
   ],
 
-  "timers": [
-        {
+    "timers": [
+    {
       "name": "TIMER0",
       "counter": { "bits": 16, "lo_reg": 138, "hi_reg": 140,
                    "reg_space": "sfr", "reload_lo_reg": 138, "reload_hi_reg": 140 },
@@ -195,6 +207,16 @@
       "overflow": { "reg": 200, "bit": 7 },
       "irq": 5,
       "overflow_action": "reload"
+    },
+    {
+      "name": "WDOG",
+      "counter": { "bits": 8, "lo_reg": 255, "hi_reg": 0,
+                   "reg_space": "sfr", "reload_lo_reg": 255, "reload_hi_reg": 0,
+                   "up": false },
+      "enable":   { "reg": 185, "bit": 5, "space": "sfr" },
+      "overflow": { "reg": 185, "bit": 5, "space": "sfr" },
+      "irq": 13,
+      "overflow_action": "reset"
     }
   ]
 }
