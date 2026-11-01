@@ -61,7 +61,7 @@ ctest --test-dir build --output-on-failure
 ### 运行
 
 ```bash
-./build/mcus <model.json> <firmware.bin> <config.toml>
+mcus <model.json> <firmware.bin> <config.toml>
 ```
 
 三个启动参数：
@@ -73,7 +73,7 @@ ctest --test-dir build --output-on-failure
 示例：
 
 ```bash
-./build/mcus models/ch552g.json blink.bin config/example.toml
+mcus models/ch552g.json blink.bin config/example.toml
 ```
 
 ### 调试工具
@@ -86,84 +86,31 @@ ctest --test-dir build --output-on-failure
 
 **注意**：`dump_shm` 以只读方式打开共享内存（`create=false`），不会重置模拟器状态。`mcus` 运行时用另一个终端 `dump_shm`，可实时观察 `P1`、`pc`、`virtual_time`。
 
-## 配置与模型文件
 
-### `config/example.toml`
+## 致谢
 
-常规运行配置。关键字段：
+本项目的开发离不开以下优秀开源项目和社区的贡献，在此我们表示由衷的感谢。
 
-- `simulator.shm_name`：共享内存名，默认 `/mcus_shm`。
-- `simulator.stream_name`：事件流名，默认 `/mcus_stream`。
-- `simulator.stream_capacity`：事件流容量，默认 4096。
-- `simulator.start_paused`：启动后是否立即暂停。
-- `crystal.frequency_hz`：虚拟晶振频率。
-- `crystal.cycles_per_instruction`：每条指令粗略虚拟耗时。
-- `debug.log_level`：`trace`/`debug`/`info`/`warn`/`error`。
-- `debug.log_output`：`stderr` 或文件路径。
+| 项目 | 用途 | 开源协议 |
+| :--- | :--- | :--- |
+| [nlohmann/json](https://github.com/nlohmann/json.git) | JSON 解析（模型/配置读取） | MIT  |
+| [toml11](https://github.com/ToruNiina/toml11.git) | TOML 解析（配置文件读取） | MIT  |
 
-### `config/debug.toml`
+## 开源许可
 
-调试用配置，启动即暂停、缩小事件流容量、开详细日志。
+Apache-2.0 [LICENSE](LICENSE)
 
-### `models/schema.md`
+## 贡献
 
-模型文件字段说明：`regions`、`registers`、`pins`、`interrupts`、`timers`、`isa_extensions`、`reset_vector`、`initial_sp` 等。
+欢迎提交 Issue 和 Pull Request。请参阅[ToDo文档](ToDo.md)
 
-### `models/dummy.json`
+## 联系方式
+---
 
-最小可运行模型：一段 Flash、一段 RAM、一段 MMIO、一个可写触发事件的寄存器、一个引脚、一个中断、一个定时器。用于验证框架闭环和测试。
+作者
 
-### `models/ch552g.json`
+Xue Zicheng <xuezicheng842@outlook.com>
 
-WCH CH552G 模型：
+GitCode: https://gitcode.com/xzc842
 
-- 地址空间：`code`（16KB）、`iram`（256B）、`sfr`（128B）、`xram`（1KB，`addr_mask=0x3FF`）。
-- 寄存器：P1、P3、PSW、ACC、B、SP、DPL、DPH、TCON、TMOD、TL0/TH0、TL1/TH1、SCON、SBUF、T2CON、T2MOD、RCAP2L/H、TL2/TH2、PWM、SPI、UART1、ADC、TKEY、USB 等。
-- 同地址多语义：`SAFE_MOD`/`CHIP_ID` 通过 `read_alias`/`write_alias` 互指；`ROM_CTRL`/`ROM_STATUS` 同理。
-- 中断：14 个中断源，向量地址与手册一致。
-- 定时器：Timer0/1 为 16 位，`overflow_action: "isa"`；Timer2 为 16 位自动重载，`overflow_action: "reload"`。
-- 引脚：P1.0–P1.7、P3.0–P3.7、RST，`source_reg` 指向对应端口 SFR，用于寄存器位到引脚表的同步。
-- ISA 扩展：`wch_dptr1_movx`，启用 0xA5 扩展指令。
-
-## 寄存器语义
-
-- `plain`：普通读写。
-- `write_only`：只写，读返回 `reset_value`。
-- `read_only`：只读，写忽略。
-- `write_trigger`：写时推 `MmioEvent`，**读返回共享内存当前值**（不是 `reset_value`）。用于 GPIO 端口等“写触发、读回显”的寄存器。
-- `fifo`：写时推事件，用于 `SBUF`、`SPI0_DATA` 等。
-- `write_one_clear`：写 1 清零。
-- `read_clear`：读后清零。
-
-**注意**：`write_trigger` 的读语义是共享内存当前值，不是 `reset_value`。这是 `P1` 等 GPIO 端口能正确 `CPL`/`SETB` 的关键。
-
-## 共享内存与事件流契约
-
-外部程序不属于本项目，通过共享内存和事件流与模拟器交互：
-
-- **共享内存布局**：控制区 → MMIO 寄存器区 → 引脚表 → 中断位图 → 注入区头 → 注入区槽 → dump 缓冲区。
-- **事件流**：Header（head/tail/capacity/backpressure）+ `MmioEvent` 数组。模拟器 push，外部程序 pop。
-- **控制区命令**：Pause、Resume、Step、Dump、Reset。
-- **中断注入**：外部程序写挂起寄存器位、中断位图，或往注入区写 `InjectSlot`。
-- **引脚**：外部程序读写 `PinState` 的 function/value/direction。
-
-### `SharedMemory` 的 `create` 参数
-
-`SharedMemory(const Model&, const std::string& shm_name, bool create = true)`：
-
-- `create=true`：`mcus` 启动时创建并初始化共享内存（`memset` + `reset_all`）。
-- `create=false`：`dump_shm` 等只读工具打开已有共享内存，**不初始化、不重置**，只读当前值。
-
-## 测试
-
-```bash
-ctest --test-dir build --output-on-failure
-```
-
-- `test_event_stream`：环形队列 push/pop、满/空、背压。
-- `test_shared_memory`：共享内存布局、MMIO 读写、引脚表、复位、中断位图、注入区。
-- `test_cpu_minimal`：加载 dummy 模型和手写固件，验证 MMIO 写事件、中断进入、复位。
-- `test_timer`：定时器描述完整性和手动溢出置位逻辑。
-- `test_ch552g`：CH552G 模型加载、别名寄存器、位地址解析、定时器描述。
-
-当前 5/5 通过。
+---
