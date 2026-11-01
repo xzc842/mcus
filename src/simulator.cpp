@@ -1,3 +1,17 @@
+// Copyright 2026 XueZicheng <xuezicheng842@outlook.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "mcus/simulator.h"
 #include "mcus/log.h"
 #include <chrono>
@@ -55,9 +69,13 @@ void Simulator::handle_control_commands() {
             break;
         case ControlCommand::Resume:
             cpu_.set_paused(false);
+            shm_.breakpoint_header()->hit.store(0);
+            shm_.breakpoint_header()->hit_addr.store(0);
             ctl->status.store(static_cast<uint32_t>(ControlStatus::Running));
             break;
         case ControlCommand::Step: {
+            shm_.breakpoint_header()->hit.store(0);
+            shm_.breakpoint_header()->hit_addr.store(0);
             uint32_t n = ctl->step_count.load();
             if (n == 0) n = 1;
             bool was_paused = cpu_.paused();

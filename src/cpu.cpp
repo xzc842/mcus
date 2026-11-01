@@ -1,3 +1,17 @@
+// Copyright 2026 XueZicheng <xuezicheng842@outlook.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "mcus/cpu.h"
 #include "mcus/log.h"
 #include <algorithm>
@@ -360,13 +374,68 @@ void Cpu::check_reset_pin() {
         ctl->reset_pin.store(0);
     }
 }
+bool Cpu::check_breakpoint() {
+    auto* bh = shm_.breakpoint_header();
+    if (bh->hit.load(std::memory_order_relaxed) != 0) return true;
 
+    // pc 没变，不重复查（Resume 后跳过当前断点）
+    if (regs_.pc == last_bp_pc_) return false;
+    last_bp_pc_ = regs_.pc;
+
+    uint32_t count = bh->count.load(std::memory_order_relaxed);
+    if (count == 0) return false;
+    if (count > shm_.breakpoint_capacity()) count = shm_.breakpoint_capacity();
+
+    uint32_t pc = regs_.pc;
+    bool sorted = bh->sorted.load(std::memory_order_relaxed) != 0;
+    auto* slots = shm_.breakpoints();
+
+    bool hit = false;
+    if (sorted) {
+        uint32_t min_addr = bh->min_addr.load(std::memory_order_relaxed);
+        uint32_t max_addr = bh->max_addr.load(std::memory_order_relaxed);
+        if (pc < min_addr || pc > max_addr) return false;
+
+        uint32_t lo = 0, hi = count;
+        while (lo < hi) {
+            uint32_t mid = (lo + hi) / 2;
+            uint32_t addr = slots[mid].addr.load(std::memory_order_relaxed);
+            if (addr == pc) {
+                if (slots[mid].enabled.load(std::memory_order_relaxed)) hit = true;
+                break;
+            } else if (addr < pc) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+    } else {
+        for (uint32_t i = 0; i < count; ++i) {
+            if (slots[i].enabled.load(std::memory_order_relaxed) &&
+                slots[i].addr.load(std::memory_order_relaxed) == pc) {
+                hit = true;
+                break;
+            }
+        }
+    }
+
+    if (hit) {
+        bh->hit.store(1, std::memory_order_relaxed);
+        bh->hit_addr.store(pc, std::memory_order_relaxed);
+        paused_.store(true);
+        shm_.control()->status.store(static_cast<uint32_t>(ControlStatus::Paused));
+        MCUS_INFO("breakpoint hit at 0x" + std::to_string(pc));
+        return true;
+    }
+    return false;
+}
 VirtTime Cpu::step() {
     if (halted_.load()) return 0;
     if (paused_.load()) return 0;
 
     check_reset_pin();
     check_inject_slots();
+    if (check_breakpoint()) return 0;
     if (check_interrupt()) return model_.cycles_per_instruction;
 
     ExecResult r = isa_->execute(regs_, *this);

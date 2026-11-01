@@ -1,3 +1,17 @@
+// Copyright 2026 XueZicheng <xuezicheng842@outlook.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "mcus/shared_memory.h"
 #include "mcus/log.h"
 #include <sys/mman.h>
@@ -25,7 +39,7 @@ SharedMemory::SharedMemory(const Model& model, const std::string& shm_name, bool
     if (p == MAP_FAILED) throw std::runtime_error("mmap failed: " + shm_name);
     base_ = p;
 
-    if (!create) return;   // 只读工具：不 memset、不 reset_all
+    if (!create) return;
 
     std::memset(base_, 0, total_size_);
 
@@ -42,7 +56,6 @@ SharedMemory::SharedMemory(const Model& model, const std::string& shm_name, bool
     ih->head.store(0);
     ih->tail.store(0);
 
-    // 注入区只支持 MMIO 型空间，收集所有 is_mmio 空间名
     for (const auto& r : model_.regions) {
         if (r.is_mmio &&
             std::find(inject_spaces_.begin(), inject_spaces_.end(), r.space) ==
@@ -72,7 +85,10 @@ void SharedMemory::layout() {
     inject_header_offset_ = align4(irq_offset_ + irq_size_);
     inject_slots_offset_ = align4(inject_header_offset_ + sizeof(InjectHeader));
     dump_offset_ = align4(inject_slots_offset_ + inject_slots_size_);
-    total_size_ = align4(dump_offset_ + dump_size_);
+    breakpoint_header_offset_ = align4(dump_offset_ + dump_size_);
+    breakpoint_slots_offset_ = align4(breakpoint_header_offset_ + sizeof(BreakpointHeader));
+    breakpoint_slots_size_ = kBreakpointCapacity * sizeof(BreakpointSlot);
+    total_size_ = align4(breakpoint_slots_offset_ + breakpoint_slots_size_);
 
     size_t max_space = 0;
     for (const auto& rd : model_.registers) {
@@ -116,6 +132,16 @@ InjectSlot* SharedMemory::inject_slots() {
     return reinterpret_cast<InjectSlot*>(static_cast<uint8_t*>(base_) + inject_slots_offset_);
 }
 size_t SharedMemory::inject_capacity() const { return kInjectCapacity; }
+
+BreakpointHeader* SharedMemory::breakpoint_header() {
+    return reinterpret_cast<BreakpointHeader*>(
+        static_cast<uint8_t*>(base_) + breakpoint_header_offset_);
+}
+BreakpointSlot* SharedMemory::breakpoints() {
+    return reinterpret_cast<BreakpointSlot*>(
+        static_cast<uint8_t*>(base_) + breakpoint_slots_offset_);
+}
+size_t SharedMemory::breakpoint_capacity() const { return kBreakpointCapacity; }
 
 uint32_t SharedMemory::read_reg(const SpaceId& space, Addr addr, uint8_t width) const {
     size_t off = SIZE_MAX;
@@ -174,6 +200,17 @@ void SharedMemory::reset_all() {
     ih->tail.store(0);
     for (size_t i = 0; i < kInjectCapacity; ++i)
         inject_slots()[i].ready.store(0);
+    auto* bh = breakpoint_header();
+    bh->count.store(0);
+    bh->sorted.store(0);
+    bh->min_addr.store(0);
+    bh->max_addr.store(0);
+    bh->hit.store(0);
+    bh->hit_addr.store(0);
+    for (size_t i = 0; i < kBreakpointCapacity; ++i) {
+        breakpoints()[i].addr.store(0);
+        breakpoints()[i].enabled.store(0);
+    }
     auto* ctl = control();
     ctl->dump_ready.store(0);
     ctl->reset_pin.store(0);

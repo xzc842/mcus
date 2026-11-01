@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 XueZicheng <xuezicheng842@outlook.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 #include "types.h"
 #include "model.h"
@@ -31,8 +47,6 @@ struct InjectSlot {
     std::atomic<uint32_t> value;
     std::atomic<uint32_t> width;
     std::atomic<uint32_t> ready;
-    // space 用固定长度字符串不现实，注入区只支持 SFR/MMIO，
-    // 具体空间由模型决定：约定注入区的空间名由 slot.space_idx 索引
     std::atomic<uint32_t> space_idx;
 };
 
@@ -40,6 +54,22 @@ struct InjectHeader {
     std::atomic<uint32_t> capacity;
     std::atomic<uint32_t> head;
     std::atomic<uint32_t> tail;
+};
+
+// 断点：外部程序写 addr/enabled，按 addr 升序，设 sorted=1，
+// 模拟器二分查找。min_addr/max_addr 用于快速范围过滤。
+struct BreakpointHeader {
+    std::atomic<uint32_t> count;      // 当前断点数
+    std::atomic<uint32_t> sorted;     // 1=按 addr 升序
+    std::atomic<uint32_t> min_addr;   // 最小断点地址
+    std::atomic<uint32_t> max_addr;   // 最大断点地址
+    std::atomic<uint32_t> hit;        // 0=未命中，1=命中
+    std::atomic<uint32_t> hit_addr;   // 命中的地址
+};
+
+struct BreakpointSlot {
+    std::atomic<uint32_t> addr;       // 断点地址
+    std::atomic<uint32_t> enabled;    // 1=启用
 };
 
 class SharedMemory {
@@ -60,6 +90,10 @@ public:
     InjectHeader* inject_header();
     InjectSlot* inject_slots();
     size_t inject_capacity() const;
+
+    BreakpointHeader* breakpoint_header();
+    BreakpointSlot* breakpoints();
+    size_t breakpoint_capacity() const;
 
     uint32_t read_reg(const SpaceId& space, Addr addr, uint8_t width) const;
     void write_reg(const SpaceId& space, Addr addr, uint32_t value, uint8_t width);
@@ -85,19 +119,23 @@ private:
     size_t inject_header_offset_ = 0;
     size_t inject_slots_offset_ = 0;
     size_t dump_offset_ = 0;
+    size_t breakpoint_header_offset_ = 0;
+    size_t breakpoint_slots_offset_ = 0;
 
     size_t mmio_size_ = 0;
     size_t pin_size_ = 0;
     size_t irq_size_ = 0;
     size_t inject_slots_size_ = 0;
     size_t dump_size_ = 0;
+    size_t breakpoint_slots_size_ = 0;
 
-    std::unordered_map<std::string, size_t> reg_offset_;   // 改 key 为 string
+    std::unordered_map<std::string, size_t> reg_offset_;
     std::vector<size_t> reg_offset_fast_;
     std::vector<SpaceId> inject_spaces_;
 
     static constexpr size_t kInjectCapacity = 64;
     static constexpr size_t kDumpCapacity = 256 * 1024;
+    static constexpr size_t kBreakpointCapacity = 32;
 };
 
 } // namespace mcus

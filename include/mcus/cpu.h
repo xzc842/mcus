@@ -1,3 +1,19 @@
+/*
+ * Copyright 2026 XueZicheng <xuezicheng842@outlook.com>
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #pragma once
 #include "types.h"
 #include "model.h"
@@ -62,6 +78,7 @@ private:
     void handle_mmio_write(const SpaceId& space, Addr addr, uint32_t v, uint8_t w);
     uint32_t handle_mmio_read(const SpaceId& space, Addr addr, uint8_t w);
     bool check_interrupt();
+    bool check_breakpoint();
     void enter_interrupt(const InterruptDesc& irq);
     void check_reset_pin();
     void check_inject_slots();
@@ -71,6 +88,8 @@ private:
 
     struct IrqFrame { uint8_t saved_ip; };
     std::vector<IrqFrame> irq_stack_;
+
+    uint32_t last_bp_pc_ = 0xFFFFFFFF;
 };
 
 } // namespace mcus

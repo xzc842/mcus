@@ -1,3 +1,17 @@
+// Copyright 2026 XueZicheng <xuezicheng842@outlook.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "mcus/model.h"
 #include "mcus/shared_memory.h"
 #include <cstdio>
@@ -54,6 +68,18 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < shm.interrupt_bitmap_size(); ++i)
             std::printf("%02X ", bm[i]);
         std::printf("\n");
+
+        std::printf("\n=== breakpoints ===\n");
+        auto* bh = shm.breakpoint_header();
+        std::printf("count=%u sorted=%u min=0x%X max=0x%X hit=%u hit_addr=0x%X\n",
+                    bh->count.load(), bh->sorted.load(),
+                    bh->min_addr.load(), bh->max_addr.load(),
+                    bh->hit.load(), bh->hit_addr.load());
+        auto* bslots = shm.breakpoints();
+        for (size_t i = 0; i < bh->count.load() && i < shm.breakpoint_capacity(); ++i) {
+            std::printf("bp[%zu] addr=0x%X enabled=%u\n",
+                        i, bslots[i].addr.load(), bslots[i].enabled.load());
+        }
     } catch (const std::exception& e) {
         std::cerr << "dump_shm error: " << e.what() << "\n";
         return 1;
