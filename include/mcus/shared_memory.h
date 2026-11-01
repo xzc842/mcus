@@ -92,7 +92,8 @@ private:
     size_t inject_slots_size_ = 0;
     size_t dump_size_ = 0;
 
-    std::unordered_map<std::string, size_t> reg_offset_;
+    std::unordered_map<std::string, size_t> reg_offset_;   // 改 key 为 string
+    std::vector<size_t> reg_offset_fast_;
     std::vector<SpaceId> inject_spaces_;
 
     static constexpr size_t kInjectCapacity = 64;

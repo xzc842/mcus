@@ -18,6 +18,8 @@ start_paused = false
 # 控制区命令轮询间隔（虚拟时间片数），仅用于降低 CPU 空转
 control_poll_interval = 64
 
+clock_step_interval = 100
+
 
 [crystal]
 # 虚拟晶振频率（Hz）。所有虚拟时间以此为基准，不跟真实时间对齐。

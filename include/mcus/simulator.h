@@ -43,6 +43,7 @@ private:
     std::thread clock_thread_;
 
     VirtTime acc_clock_ = 0;
+    uint32_t clock_step_interval_ = 100;
 };
 
 } // namespace mcus

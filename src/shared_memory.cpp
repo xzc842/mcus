@@ -74,9 +74,25 @@ void SharedMemory::layout() {
     dump_offset_ = align4(inject_slots_offset_ + inject_slots_size_);
     total_size_ = align4(dump_offset_ + dump_size_);
 
+    size_t max_space = 0;
+    for (const auto& rd : model_.registers) {
+        int sidx = model_.space_index(rd.space);
+        if (sidx < 0) continue;
+        if (static_cast<size_t>(sidx) > max_space)
+            max_space = static_cast<size_t>(sidx);
+    }
+    reg_offset_fast_.assign((max_space + 2) * 256, SIZE_MAX);
+
     size_t off = 0;
     for (const auto& rd : model_.registers) {
-        reg_offset_[Model::reg_key(rd.space, rd.addr)] = off;
+        std::string key = Model::reg_key(rd.space, rd.addr);
+        reg_offset_[key] = off;
+        int sidx = model_.space_index(rd.space);
+        if (sidx >= 0 && rd.addr < 256) {
+            size_t idx = static_cast<size_t>(sidx + 1) * 256 + rd.addr;
+            if (idx < reg_offset_fast_.size())
+                reg_offset_fast_[idx] = off;
+        }
         size_t bytes = (rd.width + 7) / 8;
         off += align4(bytes);
     }
@@ -102,9 +118,19 @@ InjectSlot* SharedMemory::inject_slots() {
 size_t SharedMemory::inject_capacity() const { return kInjectCapacity; }
 
 uint32_t SharedMemory::read_reg(const SpaceId& space, Addr addr, uint8_t width) const {
-    auto it = reg_offset_.find(Model::reg_key(space, addr));
-    if (it == reg_offset_.end()) return 0;
-    const uint8_t* p = static_cast<const uint8_t*>(base_) + mmio_offset_ + it->second;
+    size_t off = SIZE_MAX;
+    int sidx = model_.space_index(space);
+    if (sidx >= 0 && addr < 256) {
+        size_t idx = static_cast<size_t>(sidx + 1) * 256 + addr;
+        if (idx < reg_offset_fast_.size())
+            off = reg_offset_fast_[idx];
+    }
+    if (off == SIZE_MAX) {
+        auto it = reg_offset_.find(Model::reg_key(space, addr));
+        if (it == reg_offset_.end()) return 0;
+        off = it->second;
+    }
+    const uint8_t* p = static_cast<const uint8_t*>(base_) + mmio_offset_ + off;
     switch (width) {
         case 8: return *p;
         case 16: { uint16_t v; std::memcpy(&v, p, 2); return v; }
@@ -113,9 +139,19 @@ uint32_t SharedMemory::read_reg(const SpaceId& space, Addr addr, uint8_t width) 
 }
 
 void SharedMemory::write_reg(const SpaceId& space, Addr addr, uint32_t value, uint8_t width) {
-    auto it = reg_offset_.find(Model::reg_key(space, addr));
-    if (it == reg_offset_.end()) return;
-    uint8_t* p = static_cast<uint8_t*>(base_) + mmio_offset_ + it->second;
+    size_t off = SIZE_MAX;
+    int sidx = model_.space_index(space);
+    if (sidx >= 0 && addr < 256) {
+        size_t idx = static_cast<size_t>(sidx + 1) * 256 + addr;
+        if (idx < reg_offset_fast_.size())
+            off = reg_offset_fast_[idx];
+    }
+    if (off == SIZE_MAX) {
+        auto it = reg_offset_.find(Model::reg_key(space, addr));
+        if (it == reg_offset_.end()) return;
+        off = it->second;
+    }
+    uint8_t* p = static_cast<uint8_t*>(base_) + mmio_offset_ + off;
     switch (width) {
         case 8: { uint8_t v = static_cast<uint8_t>(value); std::memcpy(p, &v, 1); break; }
         case 16: { uint16_t v = static_cast<uint16_t>(value); std::memcpy(p, &v, 2); break; }

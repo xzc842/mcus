@@ -6,6 +6,7 @@ stream_name = "/mcus_stream_debug"
 stream_capacity = 16
 start_paused = false
 control_poll_interval = 16
+clock_step_interval = 1
 
 
 [crystal]

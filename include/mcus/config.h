@@ -11,6 +11,7 @@ struct SimulatorSection {
     size_t stream_capacity = 4096;
     bool start_paused = false;
     uint32_t control_poll_interval = 64;
+    uint32_t clock_step_interval = 100;
 };
 
 struct CrystalSection {

@@ -35,6 +35,11 @@ Config Config::load_from_file(const std::string& path) {
         cfg.simulator.control_poll_interval = static_cast<uint32_t>(
             toml::find_or<int64_t>(sim, "control_poll_interval",
                 static_cast<int64_t>(cfg.simulator.control_poll_interval)));
+        cfg.simulator.clock_step_interval = static_cast<uint32_t>(
+            toml::find_or<int64_t>(sim, "clock_step_interval",
+                static_cast<int64_t>(cfg.simulator.clock_step_interval)));
+        if (cfg.simulator.clock_step_interval == 0)
+            cfg.simulator.clock_step_interval = 1;
     }
 
     {

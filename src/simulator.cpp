@@ -19,6 +19,8 @@ Simulator::Simulator(Model model, std::vector<uint8_t> firmware, Config cfg)
         shm_.control()->status.store(static_cast<uint32_t>(ControlStatus::Paused));
         cpu_.set_paused(true);
     }
+    clock_step_interval_ = cfg_.simulator.clock_step_interval;
+    if (clock_step_interval_ == 0) clock_step_interval_ = 1;
 }
 
 Simulator::~Simulator() { stop(); }
@@ -65,7 +67,7 @@ void Simulator::handle_control_commands() {
                 VirtTime dt = cpu_.step();
                 if (dt == 0) break;
                 virtual_time_ += dt;
-                shm_.control()->virtual_time.store(virtual_time_);
+                shm_.control()->virtual_time.store(virtual_time_, std::memory_order_relaxed);
                 advance_clock(dt);
             }
             if (was_paused) {
@@ -212,9 +214,9 @@ void Simulator::cpu_loop() {
             continue;
         }
         virtual_time_ += dt;
-        ctl->virtual_time.store(virtual_time_);
+        ctl->virtual_time.store(virtual_time_, std::memory_order_relaxed);
         acc_clock_ += dt;
-        if (acc_clock_ >= 100) {
+        if (acc_clock_ >= clock_step_interval_) {
             advance_clock(acc_clock_);
             acc_clock_ = 0;
         }

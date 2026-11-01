@@ -51,6 +51,7 @@ int main() {
         assert(shm.read_reg("mmio", 1073741824, 32) == 0);
 
         // 中断注入
+        shm.write_reg("sfr", 0xA8, 0x80, 8);  // EA=1
         shm.write_reg("mmio", 1073741844, 1, 32); // IRQ_ENABLE
         shm.write_reg("mmio", 1073741848, 1, 32); // IRQ_PENDING
         cpu.load_firmware(make_firmware());

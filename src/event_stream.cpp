@@ -74,9 +74,11 @@ bool EventStream::full() const {
     uint64_t head = header_->head.load(std::memory_order_acquire);
     uint64_t tail = header_->tail.load(std::memory_order_acquire);
     uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
-    MCUS_DEBUG("stream full check: head=" + std::to_string(head) +
-               " tail=" + std::to_string(tail) +
-               " cap=" + std::to_string(cap));
+    if (head - tail >= cap) {
+        MCUS_WARN("event stream full: head=" + std::to_string(head) +
+                  " tail=" + std::to_string(tail) +
+                  " cap=" + std::to_string(cap));
+    }
     return (head - tail) >= cap;
 }
 

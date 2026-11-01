@@ -68,6 +68,9 @@ private:
 
     struct IrqFrame { uint8_t saved_ip; };
     std::vector<IrqFrame> irq_stack_;
+    MemBlock* code_blk_ = nullptr;
+    MemBlock* iram_blk_ = nullptr;
+    MemBlock* xram_blk_ = nullptr;
 };
 
 } // namespace mcus

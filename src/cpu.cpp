@@ -33,6 +33,12 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
             }
         }
     }
+    auto it = memory_.find("code");
+    if (it != memory_.end()) code_blk_ = &it->second;
+    it = memory_.find("iram");
+    if (it != memory_.end()) iram_blk_ = &it->second;
+    it = memory_.find("xram");
+    if (it != memory_.end()) xram_blk_ = &it->second;
     reset();
 }
 
@@ -91,9 +97,23 @@ size_t Cpu::export_memory(const SpaceId& space, Addr addr, size_t len,
 }
 
 uint8_t Cpu::read8(const SpaceId& space, Addr addr) {
+    if (space == "code" && code_blk_) {
+        size_t off = addr;
+        if (off < code_blk_->data.size()) return code_blk_->data[off];
+        return 0;
+    }
+    if (space == "iram" && iram_blk_) {
+        size_t off = addr & 0xFF;
+        if (off < iram_blk_->data.size()) return iram_blk_->data[off];
+        return 0;
+    }
+    if (space == "xram" && xram_blk_) {
+        size_t off = addr & 0x3FF;
+        if (off < xram_blk_->data.size()) return xram_blk_->data[off];
+        return 0;
+    }
     const MemoryRegion* r = model_.find_region(space, addr);
-    if (r && r->is_mmio)
-        return static_cast<uint8_t>(handle_mmio_read(space, addr, 8));
+    if (r && r->is_mmio) return static_cast<uint8_t>(handle_mmio_read(space, addr, 8));
     size_t off = mem_offset(space, addr);
     if (off == SIZE_MAX) return 0;
     return memory_.at(space).data[off];
@@ -118,11 +138,23 @@ uint32_t Cpu::read32(const SpaceId& space, Addr addr) {
 }
 
 void Cpu::write8(const SpaceId& space, Addr addr, uint8_t v) {
-    const MemoryRegion* r = model_.find_region(space, addr);
-    if (r && r->is_mmio) {
-        handle_mmio_write(space, addr, v, 8);
+    if (space == "code") {
+        MCUS_WARN("write to code space at 0x" + std::to_string(addr) +
+                  " ignored (firmware protection)");
         return;
     }
+    if (space == "iram" && iram_blk_) {
+        size_t off = addr & 0xFF;
+        if (off < iram_blk_->data.size()) iram_blk_->data[off] = v;
+        return;
+    }
+    if (space == "xram" && xram_blk_) {
+        size_t off = addr & 0x3FF;
+        if (off < xram_blk_->data.size()) xram_blk_->data[off] = v;
+        return;
+    }
+    const MemoryRegion* r = model_.find_region(space, addr);
+    if (r && r->is_mmio) { handle_mmio_write(space, addr, v, 8); return; }
     size_t off = mem_offset(space, addr);
     if (off == SIZE_MAX) return;
     memory_[space].data[off] = v;
@@ -257,6 +289,11 @@ static void write_reg_by_model(const Model& model, SharedMemory& shm,
 }
 
 bool Cpu::check_interrupt() {
+    // 只有模型定义了 IE 寄存器时才检查 EA；dummy 模型无 IE，跳过
+    if (model_.find_register("sfr", 0xA8)) {
+        uint32_t ie = read_reg_by_model(model_, shm_, "sfr", 0xA8);
+        if (!(ie & 0x80)) return false;
+    }
     uint8_t* bitmap = shm_.interrupt_bitmap();
     for (const auto& irq : model_.interrupts) {
         uint32_t pending = read_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg);
@@ -320,13 +357,18 @@ void Cpu::check_reset_pin() {
 VirtTime Cpu::step() {
     if (halted_.load()) return 0;
     if (paused_.load()) return 0;
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "step pc=0x%04X sp=0x%02X",
+                  static_cast<unsigned>(regs_.pc),
+                  static_cast<unsigned>(read_sp()));
+    MCUS_TRACE(buf);
 
     check_reset_pin();
     check_inject_slots();
     if (check_interrupt()) return model_.cycles_per_instruction;
 
     ExecResult r = isa_->execute(regs_, *this);
-    shm_.control()->pc.store(regs_.pc);
+    shm_.control()->pc.store(regs_.pc, std::memory_order_relaxed);
     if (r.halted) {
         halted_.store(true);
         shm_.control()->halted.store(1);
