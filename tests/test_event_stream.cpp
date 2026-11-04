@@ -21,6 +21,19 @@ using namespace mcus;
 
 static void cleanup(const char* name) { ::shm_unlink(name); }
 
+static DebugEvent make_mmio(uint32_t value) {
+    DebugEvent ev{};
+    ev.time = 1;
+    ev.type = DebugEventType::Mmio;
+    ev.u.mmio.time = 1;
+    ev.u.mmio.addr = 0x1000;
+    ev.u.mmio.value = value;
+    ev.u.mmio.width = 32;
+    ev.u.mmio.access = MmioAccess::Write;
+    ev.u.mmio.space_idx = 0;
+    return ev;
+}
+
 int main() {
     const char* name = "/mcus_test_stream";
     cleanup(name);
@@ -29,28 +42,32 @@ int main() {
         assert(s.empty());
         assert(!s.full());
 
-        MmioEvent ev{};
-        ev.time = 1;
-        ev.addr = 0x1000;
-        ev.value = 42;
-        ev.width = 32;
-        ev.access = MmioAccess::Write;
-        ev.space_idx = 0;
-
+        DebugEvent ev = make_mmio(42);
         assert(s.push(ev));
         assert(s.size() == 1);
         assert(!s.empty());
 
-        MmioEvent out{};
+        DebugEvent out{};
         assert(s.pop(out));
-        assert(out.addr == 0x1000);
-        assert(out.value == 42);
-        assert(out.space_idx == 0);
+        assert(out.type == DebugEventType::Mmio);
+        assert(out.u.mmio.addr == 0x1000);
+        assert(out.u.mmio.value == 42);
+        assert(out.seq == 0);
         assert(s.empty());
 
+        // 统一事件流：PIN 事件也能入队
+        DebugEvent pin{};
+        pin.time = 2;
+        pin.type = DebugEventType::Pin;
+        pin.u.pin = PinEvent{3, 1, 0, 0, 1};
+        assert(s.push(pin));
+        assert(s.pop(out));
+        assert(out.type == DebugEventType::Pin);
+        assert(out.u.pin.pin_id == 3);
+        assert(out.seq == 1);
+
         for (int i = 0; i < 4; ++i) {
-            ev.value = static_cast<uint32_t>(i);
-            assert(s.push(ev));
+            assert(s.push(make_mmio(static_cast<uint32_t>(i))));
         }
         assert(s.full());
         assert(!s.push(ev));
@@ -58,6 +75,21 @@ int main() {
         s.clear_backpressure();
         assert(!s.backpressure());
     }
+
+    // attach 不重置已有队列
+    {
+        EventStream writer(name, 4);
+        assert(writer.push(make_mmio(7)));
+    }
+    {
+        EventStream reader(name, 0, false);
+        assert(!reader.empty());
+        DebugEvent out{};
+        assert(reader.pop(out));
+        assert(out.u.mmio.value == 7);
+        assert(reader.empty());
+    }
+
     cleanup(name);
     std::cout << "test_event_stream passed\n";
     return 0;

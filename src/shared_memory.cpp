@@ -15,6 +15,7 @@
 #include "mcus/shared_memory.h"
 #include "mcus/log.h"
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
@@ -28,6 +29,25 @@ static size_t align4(size_t x) { return (x + 3) & ~size_t(3); }
 SharedMemory::SharedMemory(const Model& model, const std::string& shm_name, bool create)
     : model_(model), name_(shm_name) {
     layout();
+
+    if (!create) {
+        // 严格 attach：不创建、不截断、不重置
+        int fd = ::shm_open(shm_name.c_str(), O_RDWR, 0600);
+        if (fd < 0) throw std::runtime_error("shm not found: " + shm_name);
+        struct stat st {};
+        if (::fstat(fd, &st) != 0 ||
+            st.st_size < static_cast<off_t>(total_size_)) {
+            ::close(fd);
+            throw std::runtime_error("shm too small: " + shm_name);
+        }
+        void* p = ::mmap(nullptr, total_size_, PROT_READ | PROT_WRITE,
+                         MAP_SHARED, fd, 0);
+        ::close(fd);
+        if (p == MAP_FAILED) throw std::runtime_error("mmap failed: " + shm_name);
+        base_ = p;
+        return;
+    }
+
     int fd = ::shm_open(shm_name.c_str(), O_CREAT | O_RDWR, 0600);
     if (fd < 0) throw std::runtime_error("shm_open failed: " + shm_name);
     if (::ftruncate(fd, static_cast<off_t>(total_size_)) != 0) {
@@ -38,8 +58,6 @@ SharedMemory::SharedMemory(const Model& model, const std::string& shm_name, bool
     ::close(fd);
     if (p == MAP_FAILED) throw std::runtime_error("mmap failed: " + shm_name);
     base_ = p;
-
-    if (!create) return;
 
     std::memset(base_, 0, total_size_);
 

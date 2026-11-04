@@ -22,23 +22,28 @@
 
 namespace mcus {
 
+// 统一调试事件流：MMIO / PIN / BUS / IRQ。
 // 环形队列 + 背压标志。模拟器写满时置 backpressure，CPU 线程暂停推进。
-// 外部程序通过同一个共享内存对象消费事件。
+//
+// create=true  ：创建并初始化共享内存（模拟器侧）
+// create=false ：attach 已存在的共享内存，不重置 head/tail（外部程序侧）
 class EventStream {
 public:
-    EventStream(const std::string& shm_name, size_t capacity);
+    EventStream(const std::string& shm_name, size_t capacity,
+                bool create = true);
     ~EventStream();
 
     EventStream(const EventStream&) = delete;
     EventStream& operator=(const EventStream&) = delete;
 
     const std::string& name() const { return name_; }
+    bool attached() const { return attached_; }
 
     // 模拟器侧：推事件。返回 false 表示流满，调用方应触发背压暂停。
-    bool push(const MmioEvent& ev);
+    bool push(const DebugEvent& ev);
 
     // 外部程序侧：取事件。返回 false 表示当前为空。
-    bool pop(MmioEvent& ev);
+    bool pop(DebugEvent& ev);
 
     bool full() const;
     bool empty() const;
@@ -55,13 +60,16 @@ private:
         std::atomic<uint64_t> tail;         // 外部程序读位置
         std::atomic<uint64_t> capacity;
         std::atomic<uint32_t> backpressure; // 1 表示流满过
+        std::atomic<uint32_t> version;      // 流格式版本
     };
 
     void* base_ = nullptr;
     size_t total_size_ = 0;
     std::string name_;
     Header* header_ = nullptr;
-    MmioEvent* slots_ = nullptr;
+    DebugEvent* slots_ = nullptr;
+    uint64_t next_seq_ = 0;
+    bool attached_ = false;
 };
 
 } // namespace mcus

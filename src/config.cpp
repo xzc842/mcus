@@ -46,6 +46,8 @@ Config Config::load_from_file(const std::string& path) {
                 static_cast<int64_t>(cfg.simulator.stream_capacity)));
         cfg.simulator.start_paused = toml::find_or<bool>(
             sim, "start_paused", cfg.simulator.start_paused);
+        cfg.simulator.stay_alive = toml::find_or<bool>(
+            sim, "stay_alive", cfg.simulator.stay_alive);
         cfg.simulator.control_poll_interval = static_cast<uint32_t>(
             toml::find_or<int64_t>(sim, "control_poll_interval",
                 static_cast<int64_t>(cfg.simulator.control_poll_interval)));

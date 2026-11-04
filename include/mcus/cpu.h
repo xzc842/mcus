@@ -85,6 +85,11 @@ private:
     void check_reset_pin();
     void check_inject_slots();
 
+    void emit_mmio_event(const SpaceId& space, Addr addr, uint32_t value,
+                         uint8_t width);
+    void update_pin(size_t index, uint32_t value, uint32_t function,
+                    uint32_t direction);
+
     uint32_t last_bp_pc_ = 0xFFFFFFFF;
 };
 

@@ -1,5 +1,7 @@
 # 外部程序与 mcus 的交互
 
+> **注意**：事件流已升级为统一 `DebugEventStream`，记录类型为 `Mmio / Pin / Bus / Irq`，`EventStream` 支持 `create=false` 的 attach 模式。本文中旧的 `MmioEvent` 事件流描述已过时，以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
+
 外部程序不属于 mcus 项目，通过 POSIX 共享内存和事件流与模拟器交互。**外部程序不链接 `libmcus_core` 的模拟器部分，只通过共享内存和事件流读写；可以链接 `libmcus_core` 的 `SharedMemory`/`EventStream` 类简化访问。**
 
 ## 1. 总体架构

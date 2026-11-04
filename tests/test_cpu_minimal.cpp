@@ -51,10 +51,11 @@ int main() {
         VirtTime dt = cpu.step();
         assert(dt > 0);
         assert(!stream.empty());
-        MmioEvent ev{};
+        DebugEvent ev{};
         assert(stream.pop(ev));
-        assert(ev.addr == 1073741824);
-        assert(ev.value == 1);
+        assert(ev.type == DebugEventType::Mmio);
+        assert(ev.u.mmio.addr == 1073741824);
+        assert(ev.u.mmio.value == 1);
         assert(shm.read_reg("mmio", 1073741824, 32) == 1);
 
         dt = cpu.step();

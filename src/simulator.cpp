@@ -79,7 +79,6 @@ void Simulator::handle_control_commands() {
             shm_.breakpoint_header()->hit_addr.store(0);
             uint32_t n = ctl->step_count.load();
             if (n == 0) n = 1;
-            bool was_paused = cpu_.paused();
             cpu_.set_paused(false);
             for (uint32_t i = 0; i < n && !cpu_.halted(); ++i) {
                 VirtTime dt = cpu_.step();
@@ -88,10 +87,10 @@ void Simulator::handle_control_commands() {
                 shm_.control()->virtual_time.store(virtual_time_, std::memory_order_relaxed);
                 advance_clock(dt);
             }
-            if (was_paused) {
-                cpu_.set_paused(true);
-                ctl->status.store(static_cast<uint32_t>(ControlStatus::Paused));
-            }
+            // 调试语义：单步结束后一定暂停，让宿主能读状态
+            cpu_.set_paused(true);
+            ctl->status.store(static_cast<uint32_t>(
+                cpu_.halted() ? ControlStatus::Halted : ControlStatus::Paused));
             break;
         }
         case ControlCommand::Dump: {
@@ -144,10 +143,37 @@ void Simulator::do_dump(Addr addr, uint32_t len) {
 }
 
 void Simulator::do_reset() {
+    // reset_all 会清断点，先保存再恢复
+    auto* bh = shm_.breakpoint_header();
+    auto* slots = shm_.breakpoints();
+    const uint32_t bp_count = std::min<uint32_t>(
+        bh->count.load(), static_cast<uint32_t>(shm_.breakpoint_capacity()));
+    std::vector<std::pair<uint32_t, uint32_t>> saved;
+    saved.reserve(bp_count);
+    for (uint32_t i = 0; i < bp_count; ++i) {
+        saved.emplace_back(slots[i].addr.load(), slots[i].enabled.load());
+    }
+    const bool was_paused = cpu_.paused();
+
     cpu_.reset();
     virtual_time_ = 0;
     shm_.control()->virtual_time.store(0);
-    shm_.control()->status.store(static_cast<uint32_t>(ControlStatus::Running));
+    shm_.control()->status.store(static_cast<uint32_t>(
+        was_paused ? ControlStatus::Paused : ControlStatus::Running));
+    if (was_paused) cpu_.set_paused(true);
+
+    for (uint32_t i = 0; i < bp_count; ++i) {
+        slots[i].addr.store(saved[i].first);
+        slots[i].enabled.store(saved[i].second);
+    }
+    bh->count.store(bp_count);
+    bh->hit.store(0);
+    bh->hit_addr.store(0);
+    if (!saved.empty()) {
+        bh->sorted.store(1);
+        bh->min_addr.store(saved.front().first);
+        bh->max_addr.store(saved.back().first);
+    }
 }
 
 void Simulator::advance_clock(VirtTime delta) {
@@ -265,7 +291,7 @@ void Simulator::cpu_loop() {
         if (dt == 0) {
             if (cpu_.halted()) {
                 ctl->status.store(static_cast<uint32_t>(ControlStatus::Halted));
-                break;
+                if (!cfg_.simulator.stay_alive) break;
             }
             std::this_thread::yield();
             continue;
@@ -285,7 +311,7 @@ void Simulator::clock_loop() {
     MCUS_INFO("clock loop enter");
     while (!stop_requested_.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        if (cpu_.halted()) break;
+        if (cpu_.halted() && !cfg_.simulator.stay_alive) break;
     }
     MCUS_INFO("clock loop exited");
 }

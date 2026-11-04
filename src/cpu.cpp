@@ -243,6 +243,44 @@ void Cpu::write32(const SpaceId& space, Addr addr, uint32_t v) {
         write8(space, addr + i, static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
 }
 
+void Cpu::emit_mmio_event(const SpaceId& space, Addr addr, uint32_t value,
+                          uint8_t width) {
+    int sidx = model_.space_index(space);
+    if (sidx < 0) sidx = 0;
+
+    DebugEvent ev{};
+    ev.time = shm_.control()->virtual_time.load();
+    ev.type = DebugEventType::Mmio;
+    ev.u.mmio = MmioEvent{ev.time, addr, value, width, MmioAccess::Write,
+                          static_cast<uint32_t>(sidx)};
+    if (!stream_.push(ev)) MCUS_WARN("event stream full");
+}
+
+void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
+                     uint32_t direction) {
+    PinState* pins = shm_.pins();
+    const uint32_t old_value = pins[index].value.load();
+    const uint32_t old_function = pins[index].function.load();
+    const uint32_t old_direction = pins[index].direction.load();
+
+    uint32_t changed = 0;
+    if (old_value != value) changed |= 1;
+    if (old_function != function) changed |= 2;
+    if (old_direction != direction) changed |= 4;
+    if (changed == 0) return;
+
+    pins[index].value.store(value);
+    pins[index].function.store(function);
+    pins[index].direction.store(direction);
+
+    DebugEvent ev{};
+    ev.time = shm_.control()->virtual_time.load();
+    ev.type = DebugEventType::Pin;
+    ev.u.pin = PinEvent{static_cast<uint32_t>(index), value, function,
+                        direction, changed};
+    if (!stream_.push(ev)) MCUS_WARN("event stream full");
+}
+
 void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uint8_t width) {
     const RegisterDesc* reg = model_.find_register(space, addr);
     if (!reg) {
@@ -273,25 +311,21 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
     PinState* pins = shm_.pins();
     for (size_t i = 0; i < model_.pins.size(); ++i) {
         const PinDesc& pd = model_.pins[i];
-        if (pd.source_space == space && pd.source_reg == addr && pd.source_bit < 32) {
-            uint32_t bv = (nv >> pd.source_bit) & 1u;
-            pins[i].value.store(bv);
-            pins[i].function.store(0);
+        if (pd.source_space == space && pd.source_reg == addr &&
+            pd.source_bit < 32) {
+            const uint32_t bv = (nv >> pd.source_bit) & 1u;
+            update_pin(i, bv, 0, pins[i].direction.load());
         }
         if (pd.has_direction && pd.direction_space == space &&
             pd.direction_reg == addr && pd.direction_bit < 32) {
-            pins[i].direction.store((nv >> pd.direction_bit) & 1u);
+            update_pin(i, pins[i].value.load(), pins[i].function.load(),
+                       (nv >> pd.direction_bit) & 1u);
         }
     }
 
     if (reg->semantics == RegSemantics::WriteTrigger ||
         reg->semantics == RegSemantics::Fifo) {
-        VirtTime now = shm_.control()->virtual_time.load();
-        int sidx = model_.space_index(space);
-        if (sidx < 0) sidx = 0;
-        MmioEvent ev{now, addr, value, width, MmioAccess::Write,
-                     static_cast<uint32_t>(sidx)};
-        if (!stream_.push(ev)) MCUS_WARN("event stream full");
+        emit_mmio_event(space, addr, value, width);
     }
 
     // 架构相关副作用（如 8051 的 SBUF→TI、SPI0_DATA→SPIF）
