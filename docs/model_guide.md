@@ -14,7 +14,11 @@ models/
 新建芯片模型，在 `models/` 下加 `<chip_name>.json`，跑：
 
 ```bash
-./build/mcus models/<chip_name>.json firmware.bin config.toml
+./build/mcus \
+  --isa ./build/libmcus_isa_8051.so \
+  --model models/<chip_name>.json \
+  --firmware firmware.bin \
+  --config config.toml
 ```
 
 ## 2. 顶层字段
@@ -290,7 +294,8 @@ models/
 ### 7. 验证
 
 ```bash
-./build/mcus models/<chip>.json blink.bin config/example.toml
+./build/mcus --isa ./build/libmcus_isa_8051.so \
+  --model models/<chip>.json --firmware blink.bin --config config/example.toml
 ./build/dump_shm models/<chip>.json /mcus_shm
 ctest --test-dir build --output-on-failure
 ```

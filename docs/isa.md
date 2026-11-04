@@ -20,35 +20,45 @@ public:
 
 ## 2. 注册
 
-每个 ISA 模块提供 `register_isa_<arch>()`，在 `src/isa_registry.cpp` 的 `register_all_isas` 调用：
+ISA 以动态库（`.so`）形式提供，不编进 `mcus` 主程序。库必须导出三个 C ABI 符号：
 
 ```cpp
 // src/isa_arm.cpp
-void register_isa_arm() {
-    IsaRegistry::instance().register_isa(
-        "arm",
-        [](const Model& m) -> std::unique_ptr<InstructionSet> {
-            return std::make_unique<IsaArm>(m);
-        });
+extern "C" const char* mcus_isa_arch() {
+    return "arm";
+}
+
+extern "C" mcus::InstructionSet* mcus_isa_create(const mcus::Model* model) {
+    return new mcus::IsaArm(*model);   // 必须用 new 分配
+}
+
+extern "C" void mcus_isa_destroy(mcus::InstructionSet* isa) {
+    delete isa;
 }
 ```
 
-```cpp
-// src/isa_registry.cpp
-void register_all_isas() {
-    static bool done = false;
-    if (done) return;
-    done = true;
-    register_isa_8051();
-    register_isa_arm();   // 新增
-}
+符号名定义在 `include/mcus/isa_plugin.h`：
+
+| 符号 | 作用 |
+|---|---|
+| `mcus_isa_arch` | 返回架构名，必须与模型 `arch` 一致 |
+| `mcus_isa_create` | 按模型创建 `InstructionSet` 实例 |
+| `mcus_isa_destroy` | 销毁实例 |
+
+启动时由 `mcus --isa <lib.so>` 加载并注册到 `IsaRegistry`：
+
+```bash
+mcus --isa ./build/libmcus_isa_8051.so --model ... --firmware ... --config ...
 ```
 
-`include/mcus/instruction.h` 加声明：
+CMake 侧参考 `CMakeLists.txt`：
 
-```cpp
-void register_isa_arm();
+```cmake
+add_library(mcus_isa_arm SHARED src/isa_arm.cpp)
+target_link_libraries(mcus_isa_arm PRIVATE mcus_core)
 ```
+
+`mcus` 会校验库导出的 `arch` 与模型文件的 `arch`，不一致直接报错退出。
 
 ## 3. 模型文件
 
@@ -230,9 +240,9 @@ TEST(IsaArm, Add) {
 
 新增 ISA 前：
 
-- [ ] `include/mcus/instruction.h` 加 `register_isa_<arch>()` 声明；
 - [ ] `src/isa_<arch>.cpp` 实现 `InstructionSet`；
-- [ ] `src/isa_registry.cpp` 的 `register_all_isas` 加 `register_isa_<arch>()`；
+- [ ] 导出 `mcus_isa_arch` / `mcus_isa_create` / `mcus_isa_destroy` 三个 C ABI 符号；
+- [ ] CMake 中把 ISA 编译成 `SHARED` 库并链接 `mcus_core`；
 - [ ] `models/<chip>.json` 的 `arch` 是 `<arch>`；
 - [ ] `models/<chip>.json` 的 `arch_desc` 填 `global_irq_enable`/`irq_push_bytes`/`fast_spaces`/`reset_space`/`sp_space` 等；
 - [ ] `Cpu`/`Simulator` 不改，所有芯片差异在 `arch_desc`；

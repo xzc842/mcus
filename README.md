@@ -58,22 +58,45 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+构建产物：
+
+- `build/mcus`：模拟器主程序
+- `build/libmcus_core.so`：模拟器核心
+- `build/libmcus_isa_8051.so`：8051 ISA 动态库（外部加载）
+
 ### 运行
 
+ISA 是外部插件，启动时必须显式指定 ISA 库、芯片模型、固件和配置：
+
 ```bash
-mcus <model.json> <firmware.bin> <config.toml>
+mcus --isa <isa.so> --model <model.json> --firmware <firmware> --config <config.toml>
 ```
 
-三个启动参数：
+四个启动参数：
 
+- **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so`；模拟器会校验库导出的 `arch` 与模型 `arch` 是否一致。
 - **模型文件**：描述芯片静态结构。
-- **固件二进制**：加载到模型文件描述的非 MMIO 区域。
+- **固件**：加载到模型文件描述的非 MMIO 区域；支持 `.bin` 和 `.hex`/`.ihx`（Intel HEX）。
 - **配置文件**：共享内存名、事件流容量、晶振频率、日志级别等。
 
 示例：
 
 ```bash
-mcus models/ch552g.json blink.bin config/example.toml
+./build/mcus \
+  --isa ./build/libmcus_isa_8051.so \
+  --model models/ch552g.json \
+  --firmware blink.bin \
+  --config config/example.toml
+```
+
+也可以直接喂 SDCC 生成的 `.hex`：
+
+```bash
+./build/mcus \
+  --isa ./build/libmcus_isa_8051.so \
+  --model models/ch552g.json \
+  --firmware build/firmware.hex \
+  --config config/example.toml
 ```
 
 ### 调试工具

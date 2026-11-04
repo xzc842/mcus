@@ -1087,12 +1087,19 @@ private:
 
 } // namespace
 
-void register_isa_8051() {
-    IsaRegistry::instance().register_isa(
-        "8051",
-        [](const Model& m) -> std::unique_ptr<InstructionSet> {
-            return std::make_unique<Isa8051>(m);
-        });
+// ---- 外部 ISA 动态库 ABI ----
+
+extern "C" const char* mcus_isa_arch() {
+    return "8051";
+}
+
+extern "C" InstructionSet* mcus_isa_create(const Model* model) {
+    if (!model) return nullptr;
+    return new Isa8051(*model);
+}
+
+extern "C" void mcus_isa_destroy(InstructionSet* isa) {
+    delete isa;
 }
 
 } // namespace mcus

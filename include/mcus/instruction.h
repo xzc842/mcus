@@ -51,18 +51,31 @@ public:
     virtual ExecResult execute(CpuRegisters& regs, MemoryBus& bus) = 0;
 };
 
-using IsaFactory = std::function<std::unique_ptr<InstructionSet>(const Model&)>;
+// ISA 实例销毁器：外部 ISA 库可以导出自己的 destroy，避免跨库 delete
+struct IsaDeleter {
+    void (*destroy)(InstructionSet*) = nullptr;
+
+    void operator()(InstructionSet* isa) const {
+        if (!isa) return;
+        if (destroy) destroy(isa);
+        else delete isa;
+    }
+};
+
+using IsaPtr = std::unique_ptr<InstructionSet, IsaDeleter>;
+using IsaFactory = std::function<IsaPtr(const Model&)>;
 
 class IsaRegistry {
 public:
     static IsaRegistry& instance();
     void register_isa(const std::string& arch, IsaFactory f);
-    std::unique_ptr<InstructionSet> create(const std::string& arch,
-                                           const Model& model) const;
+    IsaPtr create(const std::string& arch, const Model& model) const;
 private:
     std::unordered_map<std::string, IsaFactory> factories_;
 };
-void register_isa_8051();
+
+// 注册内置 ISA（mcus-minimal，用于测试和最小模型）。
+// 具体架构的 ISA（如 8051）由外部动态库提供，见 isa_plugin.h。
 void register_all_isas();
 
 } // namespace mcus

@@ -70,13 +70,16 @@ ctest --test-dir build --output-on-failure
 ### 运行
 
 ```bash
-./build/mcus <model.json> <firmware.bin> <config.toml>
+./build/mcus --isa ./build/libmcus_isa_8051.so \
+  --model <model.json> --firmware <firmware.hex|firmware.bin> \
+  --config <config.toml>
 ```
 
-三个启动参数：
+四个启动参数：
 
+- **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so`。
 - **模型文件**：描述芯片静态结构。
-- **固件二进制**：加载到模型文件描述的非 MMIO 区域。
+- **固件**：`.bin` 或 `.hex`/`.ihx`。
 - **配置文件**：共享内存名、事件流容量、晶振频率、日志级别等。
 
 ### 调试工具

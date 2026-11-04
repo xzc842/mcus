@@ -29,17 +29,17 @@ void register_all_isas() {
     static bool done = false;
     if (done) return;
     done = true;
-    register_isa_8051();
+    // 只注册内置的 mcus-minimal；8051 等真实架构由外部 ISA 动态库加载
 }
 
 void IsaRegistry::register_isa(const std::string& arch, IsaFactory f) {
     factories_[arch] = std::move(f);
 }
 
-std::unique_ptr<InstructionSet> IsaRegistry::create(
+IsaPtr IsaRegistry::create(
     const std::string& arch, const Model& model) const {
     auto it = factories_.find(arch);
-    if (it == factories_.end()) return nullptr;
+    if (it == factories_.end()) return IsaPtr(nullptr);
     return it->second(model);
 }
 
@@ -155,8 +155,8 @@ struct MinimalRegistrar {
     MinimalRegistrar() {
         IsaRegistry::instance().register_isa(
             "mcus-minimal",
-            [](const Model& m) -> std::unique_ptr<InstructionSet> {
-                return std::make_unique<MinimalIsa>(m);
+            [](const Model& m) -> IsaPtr {
+                return IsaPtr(new MinimalIsa(m));
             });
     }
 };

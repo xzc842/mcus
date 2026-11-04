@@ -5,10 +5,14 @@
 ## 1. 启动
 
 ```bash
-./build/mcus models/ch552g.json blink.bin config/example.toml
+./build/mcus \
+  --isa ./build/libmcus_isa_8051.so \
+  --model models/ch552g.json \
+  --firmware blink.bin \
+  --config config/example.toml
 ```
 
-三个参数：模型文件、固件二进制、配置文件。配置文件决定共享内存名、事件流、晶振、日志。
+四个参数：ISA 动态库、模型文件、固件（`.bin` 或 `.hex`/`.ihx`）、配置文件。配置文件决定共享内存名、事件流、晶振、日志。
 
 ## 2. 完整示例
 

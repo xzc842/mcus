@@ -60,7 +60,7 @@ private:
     const Model& model_;
     SharedMemory& shm_;
     EventStream& stream_;
-    std::unique_ptr<InstructionSet> isa_;
+    IsaPtr isa_;
     CpuRegisters regs_;
     std::atomic<bool> paused_{false};
     std::atomic<bool> halted_{false};

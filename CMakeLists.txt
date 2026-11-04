@@ -38,7 +38,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(toml11)
 
-add_library(mcus_core
+# 模拟器核心：不含具体架构 ISA，ISA 由 .so 动态加载
+add_library(mcus_core SHARED
     src/model.cpp
     src/shared_memory.cpp
     src/event_stream.cpp
@@ -46,8 +47,8 @@ add_library(mcus_core
     src/simulator.cpp
     src/config.cpp
     src/isa_registry.cpp
+    src/firmware.cpp
     src/log.cpp
-    src/isa_8051.cpp
 )
 target_include_directories(mcus_core PUBLIC include)
 target_link_libraries(mcus_core
@@ -58,8 +59,17 @@ target_link_libraries(mcus_core
 )
 target_compile_options(mcus_core PRIVATE -Wall -Wextra -Wpedantic)
 
+# 8051 指令集：外部 ISA 动态库，入口符号见 include/mcus/isa_plugin.h
+add_library(mcus_isa_8051 SHARED src/isa_8051.cpp)
+target_link_libraries(mcus_isa_8051 PRIVATE mcus_core)
+target_compile_options(mcus_isa_8051 PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(mcus src/main.cpp)
-target_link_libraries(mcus PRIVATE mcus_core)
+target_link_libraries(mcus PRIVATE mcus_core ${CMAKE_DL_LIBS})
+set_target_properties(mcus PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+)
 
 # 调试工具：dump 共享内存
 add_executable(dump_shm tools/dump_shm.cpp)
