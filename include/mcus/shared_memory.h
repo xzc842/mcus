@@ -28,7 +28,8 @@ struct ControlBlock {
     std::atomic<uint32_t> status;
     std::atomic<uint32_t> step_count;
     std::atomic<uint32_t> dump_addr;
-    std::atomic<uint32_t> dump_len;
+    std::atomic<uint32_t> dump_len;       // 入参请求长度，dump 完成后写回实际长度
+    std::atomic<uint32_t> dump_space_idx; // Model::space_order 索引；UINT32_MAX=自动
     std::atomic<uint32_t> dump_ready;
     std::atomic<uint32_t> reset_pin;
     std::atomic<uint64_t> virtual_time;

@@ -65,6 +65,7 @@ SharedMemory::SharedMemory(const Model& model, const std::string& shm_name, bool
     ctl->command.store(0);
     ctl->status.store(static_cast<uint32_t>(ControlStatus::Running));
     ctl->step_count.store(1);
+    ctl->dump_space_idx.store(UINT32_MAX);
     ctl->virtual_time.store(0);
     ctl->pc.store(model_.reset_vector);
     ctl->halted.store(0);

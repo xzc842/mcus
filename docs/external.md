@@ -53,9 +53,10 @@ struct ControlBlock {
     atomic_uint32_t command;      // 外部写：控制命令
     atomic_uint32_t status;       // 模拟器写：运行状态
     atomic_uint32_t step_count;   // 外部写：单步步数
-    atomic_uint32_t dump_addr;    // 外部写：dump 起始地址
-    atomic_uint32_t dump_len;     // 外部写：dump 长度
-    atomic_uint32_t dump_ready;   // 模拟器写：dump 完成
+    atomic_uint32_t dump_addr;      // 外部写：dump 起始地址
+    atomic_uint32_t dump_len;       // 外部写：请求长度；完成后写回实际长度
+    atomic_uint32_t dump_space_idx; // 外部写：Model::space_order 索引；UINT32_MAX=自动
+    atomic_uint32_t dump_ready;     // 模拟器写：dump 完成
     atomic_uint32_t reset_pin;    // 外部写：复位引脚
     atomic_uint64_t virtual_time; // 模拟器写：虚拟时间
     atomic_uint32_t pc;           // 模拟器写：当前 PC
@@ -118,11 +119,14 @@ shm.control()->command.store(3);  // Step
 ### 3.7 Dump
 
 ```cpp
+shm.control()->dump_ready.store(0);
+shm.control()->dump_space_idx.store(0);  // code 在 space_order 里的索引
 shm.control()->dump_addr.store(0);
 shm.control()->dump_len.store(256);
-shm.control()->command.store(4);  // Dump
+shm.control()->command.store(4);         // Dump
 while (shm.control()->dump_ready.load() == 0) usleep(1000);
-uint8_t* buf = shm.dump_buffer();
+uint32_t actual = shm.control()->dump_len.load();
+uint8_t* buf = shm.dump_buffer();        // actual 字节有效
 ```
 
 ### 3.8 复位

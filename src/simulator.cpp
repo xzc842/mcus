@@ -96,7 +96,11 @@ void Simulator::handle_control_commands() {
         case ControlCommand::Dump: {
             do_dump(ctl->dump_addr.load(), ctl->dump_len.load());
             ctl->dump_ready.store(1);
-            ctl->status.store(static_cast<uint32_t>(ControlStatus::DumpDone));
+            ctl->status.store(static_cast<uint32_t>(
+                cpu_.halted()
+                    ? ControlStatus::Halted
+                    : (cpu_.paused() ? ControlStatus::Paused
+                                     : ControlStatus::Running)));
             break;
         }
         case ControlCommand::Reset:
@@ -111,35 +115,64 @@ void Simulator::do_dump(Addr addr, uint32_t len) {
     uint8_t* dst = shm_.dump_buffer();
     size_t cap = shm_.dump_buffer_size();
     size_t copied = 0;
-    // 默认 dump code 空间；外部可扩展 dump_space 字段
-    const SpaceId space = model_.reset_space;
-    if (model_.find_region(space, addr)) {
-        copied = cpu_.export_memory(space, addr, std::min<size_t>(len, cap), dst);
+    SpaceId space;
+    bool space_found = false;
+
+    const uint32_t idx = shm_.control()->dump_space_idx.load();
+    if (idx != UINT32_MAX && idx < model_.space_order.size()) {
+        space = model_.space_order[idx];
+        space_found = true;
+    }
+
+    if (space_found) {
+        const MemoryRegion* region = model_.find_region(space, addr);
+        if (region) {
+            if (region->is_mmio) {
+                copied = shm_.export_mmio(space, addr,
+                                          std::min<size_t>(len, cap), dst);
+            } else {
+                copied = cpu_.export_memory(space, addr,
+                                            std::min<size_t>(len, cap), dst);
+            }
+        }
     } else {
-        // 尝试所有空间
-        for (const auto& r : model_.regions) {
-            if (r.is_mmio) {
-                if (model_.find_region(r.space, addr)) {
-                    copied = shm_.export_mmio(r.space, addr,
-                                              std::min<size_t>(len, cap), dst);
+        // 兼容旧行为：默认 reset_space，再尝试所有 region
+        space = model_.reset_space;
+        if (model_.find_region(space, addr)) {
+            copied = cpu_.export_memory(space, addr,
+                                        std::min<size_t>(len, cap), dst);
+        } else {
+            for (const auto& r : model_.regions) {
+                if (r.is_mmio) {
+                    if (model_.find_region(r.space, addr)) {
+                        copied = shm_.export_mmio(r.space, addr,
+                                                  std::min<size_t>(len, cap), dst);
+                        space = r.space;
+                        break;
+                    }
+                } else if (model_.find_region(r.space, addr)) {
+                    copied = cpu_.export_memory(r.space, addr,
+                                                std::min<size_t>(len, cap), dst);
+                    space = r.space;
                     break;
                 }
-            } else if (model_.find_region(r.space, addr)) {
-                copied = cpu_.export_memory(r.space, addr,
-                                            std::min<size_t>(len, cap), dst);
-                break;
             }
         }
     }
+
+    // dump_len 回写实际拷贝长度，供宿主判断
+    shm_.control()->dump_len.store(static_cast<uint32_t>(copied));
+
     if (!cfg_.debug.dump_prefix.empty()) {
-        std::string path = cfg_.debug.dump_prefix + "_" +
+        std::string path = cfg_.debug.dump_prefix + "_" + space + "_" +
                            std::to_string(addr) + ".bin";
         std::ofstream f(path, std::ios::binary);
         if (f.is_open())
             f.write(reinterpret_cast<const char*>(dst),
                     static_cast<std::streamsize>(copied));
     }
-    MCUS_INFO("dump copied " + std::to_string(copied) + " bytes");
+    MCUS_INFO("dump copied " + std::to_string(copied) + " bytes from " +
+              (space.empty() ? "?" : space));
 }
 
 void Simulator::do_reset() {
