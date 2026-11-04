@@ -19,21 +19,27 @@
 
 #include "instruction.h"
 
+#include <cstdint>
+
 namespace mcus {
 
 // ISA 动态库（.so）的 C ABI 入口。
 //
-// 插件必须导出以下三个符号：
+// 插件必须导出以下四个符号：
+//   uint32_t                mcus_isa_abi_version();
 //   const char*             mcus_isa_arch();
 //   InstructionSet*         mcus_isa_create(const Model* model);
 //   void                    mcus_isa_destroy(InstructionSet* isa);
 //
-// 模拟器按模型文件的 arch 字段匹配 mcus_isa_arch() 的返回值，
-// 然后调用 mcus_isa_create 创建指令集实例。
+// 模拟器先校验 ABI 版本和 arch，再调用 mcus_isa_create 创建指令集实例。
+inline constexpr uint32_t kIsaAbiVersion = 1;
+
+inline constexpr const char* kIsaAbiVersionSymbol = "mcus_isa_abi_version";
 inline constexpr const char* kIsaArchSymbol    = "mcus_isa_arch";
 inline constexpr const char* kIsaCreateSymbol  = "mcus_isa_create";
 inline constexpr const char* kIsaDestroySymbol = "mcus_isa_destroy";
 
+using IsaAbiVersionFn = uint32_t (*)();
 using IsaArchFn    = const char* (*)();
 using IsaCreateFn  = InstructionSet* (*)(const Model*);
 using IsaDestroyFn = void (*)(InstructionSet*);

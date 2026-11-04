@@ -102,6 +102,8 @@ void* load_isa_library(const std::string& path, const std::string& model_arch) {
                                  std::string(::dlerror()));
     }
 
+    auto abi = reinterpret_cast<mcus::IsaAbiVersionFn>(
+        ::dlsym(handle, mcus::kIsaAbiVersionSymbol));
     auto arch = reinterpret_cast<mcus::IsaArchFn>(
         ::dlsym(handle, mcus::kIsaArchSymbol));
     auto create = reinterpret_cast<mcus::IsaCreateFn>(
@@ -109,11 +111,19 @@ void* load_isa_library(const std::string& path, const std::string& model_arch) {
     auto destroy = reinterpret_cast<mcus::IsaDestroyFn>(
         ::dlsym(handle, mcus::kIsaDestroySymbol));
 
-    if (!arch || !create || !destroy) {
+    if (!abi || !arch || !create || !destroy) {
         ::dlclose(handle);
         throw std::runtime_error(
             "ISA 库 " + path +
-            " 缺少入口符号 mcus_isa_arch / mcus_isa_create / mcus_isa_destroy");
+            " 缺少入口符号 mcus_isa_abi_version / mcus_isa_arch / "
+            "mcus_isa_create / mcus_isa_destroy");
+    }
+
+    if (abi() != mcus::kIsaAbiVersion) {
+        ::dlclose(handle);
+        throw std::runtime_error(
+            "ISA ABI 版本不匹配: 库为 " + std::to_string(abi()) +
+            "，模拟器要求 " + std::to_string(mcus::kIsaAbiVersion));
     }
 
     const std::string lib_arch = arch();
@@ -151,8 +161,9 @@ int main(int argc, char** argv) {
         auto firmware = mcus::load_firmware(opts.firmware);
         MCUS_INFO("model=" + model.name + " arch=" + model.arch +
                   " crystal=" + std::to_string(model.crystal_hz) + "Hz");
-        MCUS_INFO("firmware=" + opts.firmware + " (" +
-                  std::to_string(firmware.size()) + " bytes)");
+        MCUS_INFO("firmware=" + opts.firmware + " (load=0x" +
+                  std::to_string(firmware.load_addr) + ", " +
+                  std::to_string(firmware.data.size()) + " bytes)");
 
         mcus::Simulator sim(std::move(model), std::move(firmware), cfg);
         sim.run();

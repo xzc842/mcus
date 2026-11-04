@@ -42,6 +42,27 @@ static RegSemantics parse_sem(const std::string& s) {
     return RegSemantics::Plain;
 }
 
+static std::vector<RegisterAction> parse_actions(const json& reg,
+                                                 const char* key) {
+    std::vector<RegisterAction> out;
+    for (const auto& a : reg.value(key, json::array())) {
+        RegisterAction act;
+        const std::string kind = str(a, "action", "set_bit");
+        if (kind == "set_bit") act.kind = RegisterAction::Kind::SetBit;
+        else if (kind == "clear_bit") act.kind = RegisterAction::Kind::ClearBit;
+        else if (kind == "set_value") act.kind = RegisterAction::Kind::SetValue;
+        else if (kind == "clear_value") act.kind = RegisterAction::Kind::ClearValue;
+        else throw std::runtime_error("unknown register action: " + kind);
+
+        act.space = str(a, "space", "");
+        act.addr = u32(a, "addr");
+        act.bit = static_cast<uint8_t>(u32(a, "bit", 0));
+        act.value = u32(a, "value", 0);
+        out.push_back(std::move(act));
+    }
+    return out;
+}
+
 Model Model::load_from_file(const std::string& path) {
     std::ifstream f(path);
     if (!f.is_open()) throw std::runtime_error("cannot open model: " + path);
@@ -90,6 +111,8 @@ Model Model::load_from_file(const std::string& path) {
                 ba.at("addr").get<Addr>(),
                 static_cast<uint8_t>(ba.at("bit").get<uint32_t>()));
         }
+        rd.on_write = parse_actions(r, "on_write");
+        rd.on_read = parse_actions(r, "on_read");
         m.registers.push_back(std::move(rd));
     }
     for (const auto& p : j.value("pins", json::array())) {
@@ -102,12 +125,19 @@ Model Model::load_from_file(const std::string& path) {
         pd.source_space = str(p, "source_space", "");
         pd.source_reg = u32(p, "source_reg", 0);
         pd.source_bit = static_cast<uint8_t>(u32(p, "source_bit", 0));
+        if (p.contains("direction_reg")) {
+            pd.has_direction = true;
+            pd.direction_space = str(p, "direction_space", pd.source_space);
+            pd.direction_reg = u32(p, "direction_reg", 0);
+            pd.direction_bit = static_cast<uint8_t>(u32(p, "direction_bit", pd.source_bit));
+        }
         m.pins.push_back(std::move(pd));
     }
     for (const auto& irq : j.value("interrupts", json::array())) {
         InterruptDesc d;
         d.name = str(irq, "name");
         d.number = u32(irq, "number");
+        d.priority = u32(irq, "priority", d.number);
         d.vector_addr = u32(irq, "vector_addr");
         d.vector_space = str(irq, "vector_space", "code");
         d.enable_reg = u32(irq, "enable_reg");
@@ -138,6 +168,7 @@ Model Model::load_from_file(const std::string& path) {
         td.overflow.space = str(t.at("overflow"), "space", td.counter.reg_space);
         td.irq = u32(t, "irq");
         td.overflow_action = str(t, "overflow_action", "reload");
+        td.prescaler = std::max<uint32_t>(1, u32(t, "prescaler", 1));
         m.timers.push_back(std::move(td));
     }
 
@@ -152,6 +183,7 @@ Model Model::load_from_file(const std::string& path) {
             m.arch_desc.global_irq_enable.bit = static_cast<uint8_t>(u32(ge, "bit", 0));
         }
         m.arch_desc.irq_push_bytes = static_cast<uint8_t>(u32(ad, "irq_push_bytes", 2));
+        m.arch_desc.stack_grows_down = b(ad, "stack_grows_down", true);
         if (ad.contains("fast_spaces")) {
             for (const auto& v : ad.at("fast_spaces"))
                 m.arch_desc.fast_spaces.push_back(v.get<std::string>());
@@ -173,6 +205,7 @@ Model Model::load_from_file(const std::string& path) {
         m.arch_desc.initial_sp = m.initial_sp;
         m.arch_desc.fast_spaces = {"code", "iram", "xram"};
         m.arch_desc.irq_push_bytes = 2;
+        m.arch_desc.stack_grows_down = false;
         m.arch_desc.sp_reg = 0x81;
         m.arch_desc.sp_reg_space = "sfr";
         m.arch_desc.global_irq_enable.present = true;
@@ -298,20 +331,6 @@ const RegisterDesc* Model::find_register_by_name(const std::string& name) const 
 const InterruptDesc* Model::find_interrupt(uint32_t number) const {
     for (const auto& irq : interrupts) if (irq.number == number) return &irq;
     return nullptr;
-}
-
-bool Model::resolve_bit_addr(Addr bit_addr, SpaceId& space,
-                             Addr& byte_addr, uint8_t& bit) const {
-    if (bit_addr < 0x80) {
-        space = "iram";
-        byte_addr = 0x20 + (bit_addr / 8);
-        bit = static_cast<uint8_t>(bit_addr % 8);
-        return find_region(space, byte_addr) != nullptr;
-    }
-    space = "sfr";
-    byte_addr = bit_addr & 0xF8;
-    bit = static_cast<uint8_t>(bit_addr & 0x07);
-    return find_register(space, byte_addr) != nullptr;
 }
 
 size_t Model::mmio_area_size() const {

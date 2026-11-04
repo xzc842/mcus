@@ -21,12 +21,18 @@
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace mcus {
 
 namespace {
 
 constexpr uint32_t kMaxImageSize = 16u * 1024u * 1024u;
+
+struct Segment {
+    Addr addr = 0;
+    std::vector<uint8_t> bytes;
+};
 
 std::string lower_extension(const std::string& path) {
     auto dot = path.find_last_of('.');
@@ -83,9 +89,9 @@ FirmwareFormat detect_firmware_format(const std::string& path) {
     return FirmwareFormat::Raw;
 }
 
-std::vector<uint8_t> parse_intel_hex(const std::string& text,
-                                     const std::string& origin) {
-    std::vector<uint8_t> image;
+FirmwareImage parse_intel_hex(const std::string& text,
+                              const std::string& origin) {
+    std::vector<Segment> segments;
     uint32_t base = 0;
     bool saw_data = false;
     bool saw_eof = false;
@@ -133,17 +139,10 @@ std::vector<uint8_t> parse_intel_hex(const std::string& text,
 
             switch (type) {
                 case 0x00: {
-                    const uint64_t start = static_cast<uint64_t>(base) + addr;
-                    const uint64_t stop = start + count;
-                    if (stop > kMaxImageSize) {
-                        fail(origin, line_no, "地址超出镜像上限");
-                    }
-                    if (image.size() < stop) {
-                        image.resize(static_cast<size_t>(stop), 0);
-                    }
-                    for (uint8_t i = 0; i < count; ++i) {
-                        image[static_cast<size_t>(start + i)] = data[i];
-                    }
+                    Segment seg;
+                    seg.addr = base + addr;
+                    seg.bytes.assign(data, data + count);
+                    segments.push_back(std::move(seg));
                     saw_data = true;
                     break;
                 }
@@ -169,21 +168,43 @@ std::vector<uint8_t> parse_intel_hex(const std::string& text,
                     fail(origin, line_no,
                          "不支持的记录类型 " + std::to_string(type));
             }
-
-            if (saw_eof) break;
         }
 
+        if (saw_eof) break;
         if (end == std::string::npos) break;
         pos = end + 1;
     }
 
-    if (!saw_data) {
+    if (!saw_data || segments.empty()) {
         throw std::runtime_error(origin + ": Intel HEX 中没有数据记录");
+    }
+
+    Addr min_addr = segments.front().addr;
+    Addr max_addr = segments.front().addr;
+    for (const auto& seg : segments) {
+        min_addr = std::min(min_addr, seg.addr);
+        max_addr = std::max(max_addr, seg.addr +
+                                          static_cast<Addr>(seg.bytes.size()));
+    }
+    if (max_addr <= min_addr || (max_addr - min_addr) > kMaxImageSize) {
+        throw std::runtime_error(origin + ": 固件地址范围不合法");
+    }
+
+    FirmwareImage image;
+    image.load_addr = min_addr;
+    image.data.assign(static_cast<size_t>(max_addr - min_addr), 0);
+    for (const auto& seg : segments) {
+        const size_t off = static_cast<size_t>(seg.addr - min_addr);
+        if (off + seg.bytes.size() > image.data.size()) {
+            throw std::runtime_error(origin + ": 固件记录越界");
+        }
+        std::copy(seg.bytes.begin(), seg.bytes.end(),
+                  image.data.begin() + static_cast<std::ptrdiff_t>(off));
     }
     return image;
 }
 
-std::vector<uint8_t> load_firmware(const std::string& path) {
+FirmwareImage load_firmware(const std::string& path) {
     const FirmwareFormat format = detect_firmware_format(path);
 
     std::ifstream f(path, std::ios::binary);
@@ -192,8 +213,11 @@ std::vector<uint8_t> load_firmware(const std::string& path) {
     }
 
     if (format == FirmwareFormat::Raw) {
-        return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)),
-                                     std::istreambuf_iterator<char>());
+        FirmwareImage image;
+        image.load_addr = 0;
+        image.data.assign(std::istreambuf_iterator<char>(f),
+                          std::istreambuf_iterator<char>());
+        return image;
     }
 
     std::ostringstream ss;

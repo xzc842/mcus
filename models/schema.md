@@ -1,5 +1,7 @@
 # mcus 芯片模型文件 schema
 
+> 完整字段（`arch`、`arch_desc`、`timers`、寄存器 `on_write`/`on_read`、引脚方向、中断优先级、定时器预分频）见 [docs/model_guide.md](../docs/model_guide.md)。本文件只列早期核心字段。
+
 模型文件为 JSON，描述一颗芯片的静态结构。运行时状态（寄存器当前值、引脚电平、中断挂起）不在模型文件里，而在共享内存中。
 
 ## 顶层字段
@@ -8,6 +10,7 @@
 |---|---|---|---|
 | name | string | 是 | 芯片模型名 |
 | description | string | 否 | 说明 |
+| arch | string | 是 | 架构名，决定加载哪个 ISA 动态库 |
 | crystal_hz | number | 是 | 默认晶振频率（Hz），可被配置文件覆盖 |
 | cycles_per_instruction | number | 是 | 每条指令粗略虚拟耗时（晶振周期） |
 | reset_vector | number | 是 | 复位后 PC 值，必须落在某个非 MMIO 区域内 |
@@ -16,6 +19,8 @@
 | registers | array | 是 | MMIO 寄存器描述列表 |
 | pins | array | 是 | 引脚列表 |
 | interrupts | array | 是 | 中断源列表 |
+| timers | array | 否 | 定时器列表 |
+| arch_desc | object | 否 | 架构级描述（复位/栈/中断压栈/全局中断使能） |
 
 ## regions[]
 

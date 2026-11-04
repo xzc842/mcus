@@ -17,6 +17,7 @@
 #pragma once
 #include "types.h"
 #include "model.h"
+#include "firmware.h"
 #include "shared_memory.h"
 #include "event_stream.h"
 #include "instruction.h"
@@ -28,7 +29,7 @@
 namespace mcus {
 
 struct CpuRegisters {
-    uint32_t r[16]{};
+    uint32_t r[32]{};
     uint32_t pc = 0;
     uint32_t sp = 0;
     uint32_t flags = 0;
@@ -44,6 +45,7 @@ public:
     const CpuRegisters& regs() const { return regs_; }
     uint32_t pc() const { return regs_.pc; }
 
+    void load_firmware(const FirmwareImage& firmware);
     void load_firmware(const std::vector<uint8_t>& firmware);
     void reset();
     size_t export_memory(const SpaceId& space, Addr addr, size_t len, uint8_t* dst) const;
@@ -82,12 +84,6 @@ private:
     void enter_interrupt(const InterruptDesc& irq);
     void check_reset_pin();
     void check_inject_slots();
-
-    uint8_t read_sp();
-    void write_sp(uint8_t v);
-
-    struct IrqFrame { uint8_t saved_ip; };
-    std::vector<IrqFrame> irq_stack_;
 
     uint32_t last_bp_pc_ = 0xFFFFFFFF;
 };

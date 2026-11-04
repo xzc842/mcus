@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "mcus/instruction.h"
+#include "mcus/isa_plugin.h"
 #include "mcus/cpu.h"
 #include "mcus/log.h"
 #include <cstdio>
@@ -1046,7 +1047,7 @@ private:
 
     bool bit_read(MemoryBus& bus, uint8_t bit_addr) {
         SpaceId space; Addr byte_addr; uint8_t bit;
-        if (!model_.resolve_bit_addr(bit_addr, space, byte_addr, bit))
+        if (!resolve_bit_addr(model_, bit_addr, space, byte_addr, bit))
             return false;
         bool v = ((bus.read8(space, byte_addr) >> bit) & 1) != 0;
         return v;
@@ -1054,7 +1055,7 @@ private:
 
     void bit_write(MemoryBus& bus, uint8_t bit_addr, bool v) {
         SpaceId space; Addr byte_addr; uint8_t bit;
-        if (!model_.resolve_bit_addr(bit_addr, space, byte_addr, bit))
+        if (!resolve_bit_addr(model_, bit_addr, space, byte_addr, bit))
             return;
         uint8_t cur = bus.read8(space, byte_addr);
         if (v) cur |= static_cast<uint8_t>(1u << bit);
@@ -1083,11 +1084,85 @@ private:
         write_ov(bus, ((((a ^ src) & (a ^ result)) & 0x80) != 0) ? 1 : 0);
         write_acc(bus, result);
     }
+
+    // ---- 架构钩子 ----
+
+    void reset(CpuRegisters& regs, MemoryBus& bus, const Model& model) override {
+        regs.pc = model.arch_desc.reset_vector;
+        regs.sp = model.arch_desc.initial_sp;
+
+        const SpaceId sp_space = model.arch_desc.sp_reg_space.empty()
+                                     ? SpaceId("sfr")
+                                     : model.arch_desc.sp_reg_space;
+        const Addr sp_reg = model.arch_desc.sp_reg != 0
+                                ? model.arch_desc.sp_reg
+                                : 0x81;
+        bus.write8(sp_space, sp_reg,
+                   static_cast<uint8_t>(model.arch_desc.initial_sp));
+        ip_stack_.clear();
+    }
+
+    void save_context(CpuRegisters& regs, MemoryBus& bus,
+                      const Model& model) override {
+        const RegisterDesc* ip = model.find_register_by_name("IP");
+        const SpaceId ip_space = ip ? ip->space : SpaceId("sfr");
+        const Addr ip_addr = ip ? ip->addr : 0xB8;
+        ip_stack_.push_back(bus.read8(ip_space, ip_addr));
+
+        const SpaceId sp_space = model.arch_desc.sp_reg_space.empty()
+                                     ? SpaceId("sfr")
+                                     : model.arch_desc.sp_reg_space;
+        const Addr sp_reg = model.arch_desc.sp_reg != 0
+                                ? model.arch_desc.sp_reg
+                                : 0x81;
+        const SpaceId stack_space = model.arch_desc.sp_space;
+
+        uint8_t sp = bus.read8(sp_space, sp_reg);
+        for (uint8_t i = 0; i < model.arch_desc.irq_push_bytes; ++i) {
+            ++sp;
+            bus.write8(stack_space, sp,
+                       static_cast<uint8_t>((regs.pc >> (8 * i)) & 0xFF));
+        }
+        bus.write8(sp_space, sp_reg, sp);
+        regs.sp = sp;
+    }
+
+    void restore_context(CpuRegisters& regs, MemoryBus& bus,
+                         const Model& model) override {
+        (void)regs;
+        if (ip_stack_.empty()) return;
+        const RegisterDesc* ip = model.find_register_by_name("IP");
+        const SpaceId ip_space = ip ? ip->space : SpaceId("sfr");
+        const Addr ip_addr = ip ? ip->addr : 0xB8;
+        bus.write8(ip_space, ip_addr, ip_stack_.back());
+        ip_stack_.pop_back();
+    }
+
+    bool resolve_bit_addr(const Model& model, Addr bit_addr, SpaceId& space,
+                          Addr& byte_addr, uint8_t& bit) const override {
+        if (bit_addr < 0x80) {
+            space = "iram";
+            byte_addr = 0x20 + (bit_addr / 8);
+            bit = static_cast<uint8_t>(bit_addr % 8);
+            return model.find_region(space, byte_addr) != nullptr;
+        }
+        space = "sfr";
+        byte_addr = bit_addr & 0xF8;
+        bit = static_cast<uint8_t>(bit_addr & 0x07);
+        return model.find_register(space, byte_addr) != nullptr;
+    }
+
+private:
+    std::vector<uint8_t> ip_stack_;
 };
 
 } // namespace
 
 // ---- 外部 ISA 动态库 ABI ----
+
+extern "C" uint32_t mcus_isa_abi_version() {
+    return kIsaAbiVersion;
+}
 
 extern "C" const char* mcus_isa_arch() {
     return "8051";

@@ -71,6 +71,7 @@ models/
 "arch_desc": {
   "global_irq_enable": { "space": "sfr", "reg": 168, "bit": 7, "present": true },
   "irq_push_bytes": 2,
+  "stack_grows_down": false,
   "fast_spaces": ["code", "iram", "xram"],
   "reset_space": "code",
   "reset_vector": 0,
@@ -86,6 +87,7 @@ models/
 |---|---|---|
 | `global_irq_enable` | object | 全局中断使能，`space`/`reg`/`bit`，`present=false` 表示无 |
 | `irq_push_bytes` | uint8 | 中断压栈宽度，8051 是 2，ARM 是 4/8 |
+| `stack_grows_down` | bool | 栈增长方向，8051=false，ARM/RISC-V=true |
 | `fast_spaces` | string[] | 快速空间，`code`/`iram`/`xram`，别的架构 `flash`/`ram` |
 | `reset_space` | string | 复位向量空间 |
 | `reset_vector` | uint32 | 复位向量地址 |
@@ -142,6 +144,26 @@ models/
 | `reset_value` | uint32 | 复位值 |
 | `read_alias` | string | 读别名（同地址多语义） |
 | `write_alias` | string | 写别名 |
+| `on_write` | array | 写后执行的通用动作，见下 |
+| `on_read` | array | 读后执行的通用动作，见下 |
+
+### `on_write` / `on_read`：寄存器副作用
+
+用模型描述“写 A 后置 B 的某位”这类副作用，核心执行，不需要在 ISA 里写死：
+
+```json
+{ "name": "SBUF", "space": "sfr", "addr": 153, "width": 8, "semantics": "fifo",
+  "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 152, "bit": 1 } ] }
+```
+
+| `action` | 作用 |
+|---|---|
+| `set_bit` | 目标寄存器 `bit` 置 1 |
+| `clear_bit` | 目标寄存器 `bit` 清 0 |
+| `set_value` | 目标寄存器写 `value` |
+| `clear_value` | 目标寄存器写 0 |
+
+动作由 `Cpu` 在读写后直接写共享内存，不会再次触发引脚/事件/动作，适合中断标志、状态位这类副作用。
 
 ### `semantics` 语义
 
@@ -184,8 +206,13 @@ models/
 | `source_space` | string | 源寄存器空间 |
 | `source_reg` | uint32 | 源寄存器地址 |
 | `source_bit` | uint8 | 源寄存器位 |
+| `direction_space` | string | 方向寄存器空间 |
+| `direction_reg` | uint32 | 方向寄存器地址 |
+| `direction_bit` | uint8 | 方向位 |
 
 **`source_space`/`source_reg`/`source_bit` 用于寄存器位到引脚表的同步。** **`P1` 写 `0xFE`，`P1.0` 的 `source_bit=0`，引脚表 `P1.0` 的 `value=0`。**
+
+**`direction_*` 可选：写方向寄存器时同步更新 `PinState.direction`，核心不假设方向寄存器叫什么。**
 
 ## 7. `interrupts`：中断
 
@@ -202,6 +229,7 @@ models/
 |---|---|---|
 | `name` | string | 中断名 |
 | `number` | uint32 | 中断号，`interrupt(N)` 用 |
+| `priority` | uint32 | 优先级，数值越小越优先；默认等于 `number` |
 | `vector_addr` | uint32 | 向量地址 |
 | `vector_space` | string | 向量空间 |
 | `enable_reg` | uint32 | 使能寄存器地址 |
@@ -234,8 +262,8 @@ models/
 |---|---|---|
 | `name` | string | 定时器名 |
 | `counter.bits` | uint8 | 位数 |
-| `counter.lo_reg` | uint32 | 低字节寄存器 |
-| `counter.hi_reg` | uint32 | 高字节寄存器 |
+| `counter.lo_reg` | uint32 | 低字节寄存器；`hi_reg=0` 时它是完整计数器寄存器 |
+| `counter.hi_reg` | uint32 | 高字节寄存器；0 表示单寄存器计数器 |
 | `counter.reg_space` | string | 计数器空间 |
 | `counter.reload_lo_reg` | uint32 | 重载低字节 |
 | `counter.reload_hi_reg` | uint32 | 重载高字节 |
@@ -248,6 +276,14 @@ models/
 | `overflow.space` | string | 溢出寄存器空间，默认 `counter.reg_space` |
 | `irq` | uint32 | 中断号 |
 | `overflow_action` | string | `isa`/`reload`/`reset` |
+| `prescaler` | uint32 | 每 N 个虚拟周期计数一次，默认 1 |
+
+**计数器有两种写法：**
+
+- **双 8 位寄存器**：`bits > 8` 且 `hi_reg != 0`，`(hi << 8) | lo`，8051 Timer0/1/2 用这种；
+- **单寄存器**：`hi_reg == 0`，直接读写 `lo_reg`，宽度取模型里该寄存器的 `width`（8/16/32 位通用）。
+
+**`prescaler` 由模型描述，核心不再假设“每个周期都计数”。**
 
 **`overflow_action`：**
 

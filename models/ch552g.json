@@ -76,7 +76,8 @@
     { "name": "TH1",         "space": "sfr", "addr": 141, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "SCON",        "space": "sfr", "addr": 152, "width": 8, "semantics": "plain", "reset_value": 0 },
-    { "name": "SBUF",        "space": "sfr", "addr": 153, "width": 8, "semantics": "fifo", "reset_value": 0 },
+    { "name": "SBUF",        "space": "sfr", "addr": 153, "width": 8, "semantics": "fifo", "reset_value": 0,
+      "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 152, "bit": 1 } ] },
 
     { "name": "T2CON",       "space": "sfr", "addr": 200, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "T2MOD",       "space": "sfr", "addr": 201, "width": 8, "semantics": "plain", "reset_value": 0 },
@@ -91,13 +92,15 @@
     { "name": "PWM_CK_SE",   "space": "sfr", "addr": 158, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "SPI0_STAT",   "space": "sfr", "addr": 248, "width": 8, "semantics": "plain", "reset_value": 8 },
-    { "name": "SPI0_DATA",   "space": "sfr", "addr": 249, "width": 8, "semantics": "fifo", "reset_value": 0 },
+    { "name": "SPI0_DATA",   "space": "sfr", "addr": 249, "width": 8, "semantics": "fifo", "reset_value": 0,
+      "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 248, "bit": 4 } ] },
     { "name": "SPI0_CTRL",   "space": "sfr", "addr": 250, "width": 8, "semantics": "plain", "reset_value": 2 },
     { "name": "SPI0_CK_SE",  "space": "sfr", "addr": 251, "width": 8, "semantics": "plain", "reset_value": 32 },
     { "name": "SPI0_SETUP",  "space": "sfr", "addr": 252, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "SCON1",       "space": "sfr", "addr": 192, "width": 8, "semantics": "plain", "reset_value": 64 },
-    { "name": "SBUF1",       "space": "sfr", "addr": 193, "width": 8, "semantics": "fifo", "reset_value": 0 },
+    { "name": "SBUF1",       "space": "sfr", "addr": 193, "width": 8, "semantics": "fifo", "reset_value": 0,
+      "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 192, "bit": 1 } ] },
     { "name": "SBAUD1",      "space": "sfr", "addr": 194, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "ADC_CTRL",    "space": "sfr", "addr": 128, "width": 8, "semantics": "plain", "reset_value": 0 },

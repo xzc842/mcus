@@ -21,6 +21,40 @@
 
 namespace mcus {
 
+namespace {
+
+void apply_actions(const Model& model, SharedMemory& shm,
+                   const std::vector<RegisterAction>& actions) {
+    for (const auto& act : actions) {
+        const RegisterDesc* target = model.find_register(act.space, act.addr);
+        if (!target) continue;
+
+        const uint8_t width = target->width;
+        uint32_t value = shm.read_reg(act.space, act.addr, width);
+        switch (act.kind) {
+            case RegisterAction::Kind::SetBit:
+                value |= (1u << act.bit);
+                break;
+            case RegisterAction::Kind::ClearBit:
+                value &= ~(1u << act.bit);
+                break;
+            case RegisterAction::Kind::SetValue:
+                value = act.value;
+                break;
+            case RegisterAction::Kind::ClearValue:
+                value = 0;
+                break;
+        }
+
+        if (width < 32) {
+            value &= (1u << width) - 1u;
+        }
+        shm.write_reg(act.space, act.addr, value, width);
+    }
+}
+
+} // namespace
+
 Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
     : model_(model), shm_(shm), stream_(stream) {
     register_all_isas();
@@ -78,32 +112,56 @@ size_t Cpu::mem_offset(const SpaceId& space, Addr addr) const {
     return off;
 }
 
-void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
-    const MemoryRegion* tgt = model_.find_region(model_.arch_desc.reset_space,
-                                                  model_.arch_desc.reset_vector);
-    if (!tgt) throw std::runtime_error("reset_vector region missing");
-    size_t off = mem_offset(tgt->space, tgt->base);
+void Cpu::load_firmware(const FirmwareImage& firmware) {
+    Addr load_addr = firmware.load_addr;
+
+    // 先找镜像起始地址所在的普通内存区域；找不到则按“相对复位区域基址”处理
+    const MemoryRegion* tgt = nullptr;
+    for (const auto& r : model_.regions) {
+        if (!r.is_mmio && r.contains(load_addr)) {
+            tgt = &r;
+            break;
+        }
+    }
+
+    if (!tgt) {
+        tgt = model_.find_region(model_.arch_desc.reset_space,
+                                 model_.arch_desc.reset_vector);
+        if (!tgt) throw std::runtime_error("reset_vector region missing");
+        load_addr = tgt->base + load_addr;
+    }
+
+    size_t off = mem_offset(tgt->space, load_addr);
     if (off == SIZE_MAX) throw std::runtime_error("firmware target block missing");
+
     auto& blk = memory_[tgt->space];
-    size_t n = std::min<size_t>(firmware.size(), tgt->size);
+    size_t region_off = load_addr - tgt->base;
+    size_t avail = tgt->size > region_off ? tgt->size - region_off : 0;
+    size_t n = std::min<size_t>(firmware.data.size(), avail);
     n = std::min<size_t>(n, blk.data.size() - off);
-    std::memcpy(blk.data.data() + off, firmware.data(), n);
+
+    std::memcpy(blk.data.data() + off, firmware.data.data(), n);
     MCUS_INFO("firmware loaded: " + std::to_string(n) + " bytes at " +
-              tgt->space + ":0x" + std::to_string(tgt->base));
+              tgt->space + ":0x" + std::to_string(load_addr));
+}
+
+void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
+    load_firmware(FirmwareImage{0, firmware});
 }
 
 void Cpu::reset() {
     regs_ = CpuRegisters{};
-    regs_.pc = model_.arch_desc.reset_vector;
     halted_.store(false);
     paused_.store(false);
-    irq_stack_.clear();
     shm_.reset_all();
-    write_sp(static_cast<uint8_t>(model_.arch_desc.initial_sp));
+
+    // 架构相关的 PC/SP/寄存器初始化由 ISA 负责
+    isa_->reset(regs_, *this, model_);
+
     shm_.control()->pc.store(regs_.pc);
     shm_.control()->virtual_time.store(0);
     MCUS_INFO("cpu reset, pc=0x" + std::to_string(regs_.pc) +
-              " sp=0x" + std::to_string(read_sp()));
+              " sp=0x" + std::to_string(regs_.sp));
 }
 
 size_t Cpu::export_memory(const SpaceId& space, Addr addr, size_t len,
@@ -185,14 +243,6 @@ void Cpu::write32(const SpaceId& space, Addr addr, uint32_t v) {
         write8(space, addr + i, static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
 }
 
-uint8_t Cpu::read_sp() {
-    return read8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg);
-}
-
-void Cpu::write_sp(uint8_t v) {
-    write8(model_.arch_desc.sp_reg_space, model_.arch_desc.sp_reg, v);
-}
-
 void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uint8_t width) {
     const RegisterDesc* reg = model_.find_register(space, addr);
     if (!reg) {
@@ -217,6 +267,9 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
     if (reg->semantics == RegSemantics::WriteOneClear) nv = old & ~value;
     shm_.write_reg(space, addr, nv, width);
 
+    // 模型描述的寄存器副作用（如 SBUF 写后置 TI）
+    apply_actions(model_, shm_, reg->on_write);
+
     PinState* pins = shm_.pins();
     for (size_t i = 0; i < model_.pins.size(); ++i) {
         const PinDesc& pd = model_.pins[i];
@@ -224,6 +277,10 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
             uint32_t bv = (nv >> pd.source_bit) & 1u;
             pins[i].value.store(bv);
             pins[i].function.store(0);
+        }
+        if (pd.has_direction && pd.direction_space == space &&
+            pd.direction_reg == addr && pd.direction_bit < 32) {
+            pins[i].direction.store((nv >> pd.direction_bit) & 1u);
         }
     }
 
@@ -235,20 +292,10 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
         MmioEvent ev{now, addr, value, width, MmioAccess::Write,
                      static_cast<uint32_t>(sidx)};
         if (!stream_.push(ev)) MCUS_WARN("event stream full");
-
-        // SBUF 写：置 TI（SCON bit1），触发 UART0 中断
-        if (space == "sfr" && addr == 0x99) {
-            uint8_t scon = static_cast<uint8_t>(shm_.read_reg("sfr", 0x98, 8));
-            scon |= 0x02;
-            shm_.write_reg("sfr", 0x98, scon, 8);
-        }
-        // SPI0_DATA 写：置 SPIF（SPI0_STAT bit4）
-        if (space == "sfr" && addr == 0xF9) {
-            uint8_t stat = static_cast<uint8_t>(shm_.read_reg("sfr", 0xF8, 8));
-            stat |= 0x10;
-            shm_.write_reg("sfr", 0xF8, stat, 8);
-        }
     }
+
+    // 架构相关副作用（如 8051 的 SBUF→TI、SPI0_DATA→SPIF）
+    isa_->on_mmio_write(model_, *this, space, addr, nv, width);
 }
 
 uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
@@ -264,6 +311,28 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
     uint32_t v = shm_.read_reg(space, addr, width);
     if (reg->semantics == RegSemantics::ReadClear)
         shm_.write_reg(space, addr, 0, width);
+
+    // 输入引脚：把外部写入 PinState.value 的电平叠加回端口寄存器
+    const PinState* pins = shm_.pins();
+    bool has_input = false;
+    uint32_t merged = v;
+    for (size_t i = 0; i < model_.pins.size(); ++i) {
+        const PinDesc& pd = model_.pins[i];
+        if (pd.source_space != space || pd.source_reg != addr ||
+            pd.source_bit >= 32) {
+            continue;
+        }
+        if (pd.has_direction && pins[i].direction.load() == 0) {
+            const uint32_t bit = 1u << pd.source_bit;
+            merged = (merged & ~bit) |
+                     ((pins[i].value.load() & 1u) << pd.source_bit);
+            has_input = true;
+        }
+    }
+    if (has_input) v = merged;
+
+    apply_actions(model_, shm_, reg->on_read);
+    isa_->on_mmio_read(model_, *this, space, addr, width);
     return v;
 }
 
@@ -305,19 +374,15 @@ static uint32_t read_reg_by_model(const Model& model, SharedMemory& shm,
     return shm.read_reg(space, addr, w);
 }
 
-static void write_reg_by_model(const Model& model, SharedMemory& shm,
-                               const SpaceId& space, Addr addr, uint32_t v) {
-    const RegisterDesc* r = model.find_register(space, addr);
-    uint8_t w = r ? r->width : 8;
-    shm.write_reg(space, addr, v, w);
-}
-
 bool Cpu::check_interrupt() {
     if (has_global_irq_enable_) {
         uint32_t v = read_reg_by_model(model_, shm_, global_irq_space_, global_irq_reg_);
         if (!(v & (1u << global_irq_bit_))) return false;
     }
+
     uint8_t* bitmap = shm_.interrupt_bitmap();
+    const InterruptDesc* best = nullptr;
+
     for (const auto& irq : model_.interrupts) {
         uint32_t pending = read_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg);
         bool bp = false;
@@ -325,30 +390,26 @@ bool Cpu::check_interrupt() {
         if (byte < shm_.interrupt_bitmap_size())
             bp = (bitmap[byte] & (1u << bit)) != 0;
         if (!bp && !(pending & (1u << irq.pending_bit))) continue;
+
         uint32_t enable = read_reg_by_model(model_, shm_, irq.enable_space, irq.enable_reg);
         if (!(enable & (1u << irq.enable_bit))) continue;
-        enter_interrupt(irq);
-        return true;
+
+        if (!best || isa_->higher_priority(irq, *best)) best = &irq;
     }
-    return false;
+
+    if (!best) return false;
+    enter_interrupt(*best);
+    return true;
 }
 
 void Cpu::enter_interrupt(const InterruptDesc& irq) {
     MCUS_DEBUG("enter interrupt " + irq.name);
-    irq_stack_.push_back({ read8("sfr", 0xB8) });
 
-    uint8_t sp = read_sp();
-    for (int i = 0; i < model_.arch_desc.irq_push_bytes; ++i) {
-        sp = static_cast<uint8_t>(sp + 1);
-        write_sp(sp);
-        write8(model_.arch_desc.sp_space, sp,
-               static_cast<uint8_t>((regs_.pc >> (8 * i)) & 0xFF));
-    }
+    // 保存架构上下文（8051 压 PC + IP，ARM/RISC-V 压各自的异常帧）
+    isa_->save_context(regs_, *this, model_);
 
     if (irq.clear_pending) {
-        uint32_t pending = read_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg);
-        pending &= ~(1u << irq.pending_bit);
-        write_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg, pending);
+        isa_->acknowledge_interrupt(irq, *this, model_);
     }
 
     uint8_t* bitmap = shm_.interrupt_bitmap();
@@ -356,14 +417,12 @@ void Cpu::enter_interrupt(const InterruptDesc& irq) {
     if (byte < shm_.interrupt_bitmap_size())
         bitmap[byte] &= static_cast<uint8_t>(~(1u << bit));
 
-    regs_.pc = irq.vector_addr;
+    regs_.pc = isa_->interrupt_vector(irq, *this, model_);
+    shm_.control()->pc.store(regs_.pc);
 }
 
 void Cpu::on_reti() {
-    if (irq_stack_.empty()) return;
-    IrqFrame frame = irq_stack_.back();
-    irq_stack_.pop_back();
-    write8("sfr", 0xB8, frame.saved_ip);
+    isa_->restore_context(regs_, *this, model_);
 }
 
 void Cpu::check_reset_pin() {

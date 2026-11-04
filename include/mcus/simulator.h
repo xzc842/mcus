@@ -29,7 +29,7 @@ namespace mcus {
 
 class Simulator {
 public:
-    Simulator(Model model, std::vector<uint8_t> firmware, Config cfg);
+    Simulator(Model model, FirmwareImage firmware, Config cfg);
     ~Simulator();
     Simulator(const Simulator&) = delete;
     Simulator& operator=(const Simulator&) = delete;
@@ -46,7 +46,7 @@ private:
     void advance_clock(VirtTime delta);
 
     Model model_;
-    std::vector<uint8_t> firmware_;
+    FirmwareImage firmware_;
     Config cfg_;
     SharedMemory shm_;
     EventStream stream_;
@@ -60,6 +60,7 @@ private:
 
     VirtTime acc_clock_ = 0;
     uint32_t clock_step_interval_ = 100;
+    std::vector<uint64_t> timer_acc_;
 };
 
 } // namespace mcus

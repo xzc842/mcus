@@ -20,10 +20,14 @@ public:
 
 ## 2. 注册
 
-ISA 以动态库（`.so`）形式提供，不编进 `mcus` 主程序。库必须导出三个 C ABI 符号：
+ISA 以动态库（`.so`）形式提供，不编进 `mcus` 主程序。库必须导出四个 C ABI 符号：
 
 ```cpp
 // src/isa_arm.cpp
+extern "C" uint32_t mcus_isa_abi_version() {
+    return mcus::kIsaAbiVersion;
+}
+
 extern "C" const char* mcus_isa_arch() {
     return "arm";
 }
@@ -41,6 +45,7 @@ extern "C" void mcus_isa_destroy(mcus::InstructionSet* isa) {
 
 | 符号 | 作用 |
 |---|---|
+| `mcus_isa_abi_version` | 返回 ABI 版本，必须等于 `kIsaAbiVersion` |
 | `mcus_isa_arch` | 返回架构名，必须与模型 `arch` 一致 |
 | `mcus_isa_create` | 按模型创建 `InstructionSet` 实例 |
 | `mcus_isa_destroy` | 销毁实例 |
@@ -58,7 +63,7 @@ add_library(mcus_isa_arm SHARED src/isa_arm.cpp)
 target_link_libraries(mcus_isa_arm PRIVATE mcus_core)
 ```
 
-`mcus` 会校验库导出的 `arch` 与模型文件的 `arch`，不一致直接报错退出。
+`mcus` 会校验 ABI 版本和 `arch`，不一致直接报错退出。
 
 ## 3. 模型文件
 
@@ -146,23 +151,28 @@ ExecResult execute(CpuRegisters& regs, MemoryBus& bus) override {
 
 ### 5.4 中断
 
-`Cpu` 的 `check_interrupt`/`enter_interrupt` 处理中断，ISA 只需：
+`Cpu` 负责选中优先级最高的中断、清挂起位和设 PC；**保存/恢复上下文由 ISA 钩子负责**：
 
-- **`on_reti()`**：`RETI` 执行后回调，`Cpu` 恢复 `IP`；
-- **中断压栈**：`enter_interrupt` 按 `arch_desc.irq_push_bytes` 压栈，ISA 不用管；
-- **中断返回**：`RETI`/`ERET` 弹栈，ISA 实现 `pop`。
+| 钩子 | 何时调用 | 默认行为 |
+|---|---|---|
+| `save_context(regs, bus, model)` | 进入中断前 | 按 `arch_desc.irq_push_bytes` 压 PC |
+| `restore_context(regs, bus, model)` | `bus.on_reti()` 时 | 空 |
+| `higher_priority(a, b)` | 选中断时 | `priority` 小者优先 |
 
-**8051 的 `RETI`（`0x32`）：**
+8051 在 `save_context` 里保存 `IP`（`sfr` 0xB8）并按 `SP` 压 PC，`restore_context` 恢复 `IP`：
 
 ```cpp
-case 0x32: {
-    uint8_t hi = pop(bus);
-    uint8_t lo = pop(bus);
-    pc = (static_cast<uint16_t>(hi) << 8) | lo;
-    bus.on_reti();
-    break;
+void save_context(CpuRegisters& regs, MemoryBus& bus, const Model& model) override {
+    ip_stack_.push_back(bus.read8("sfr", 0xB8));
+    uint8_t sp = bus.read8("sfr", 0x81);
+    for (uint8_t i = 0; i < model.arch_desc.irq_push_bytes; ++i) {
+        bus.write8("iram", ++sp, (regs.pc >> (8 * i)) & 0xFF);
+    }
+    bus.write8("sfr", 0x81, sp);
 }
 ```
+
+**8051 的 `RETI`（`0x32`）：** 弹 PC 后调用 `bus.on_reti()`，触发 `restore_context`。
 
 ### 5.5 停机
 
@@ -176,6 +186,25 @@ default:
     res.halted = true;
     break;
 ```
+
+### 5.6 架构钩子一览
+
+`InstructionSet` 里除 `execute` 外的虚函数都是可覆盖的钩子：
+
+```cpp
+virtual void reset(CpuRegisters&, MemoryBus&, const Model&);
+virtual void save_context(...);
+virtual void restore_context(...);
+virtual bool resolve_bit_addr(const Model&, Addr, SpaceId&, Addr&, uint8_t&) const;
+virtual void on_mmio_write(...);
+virtual void on_mmio_read(...);
+virtual bool higher_priority(const InterruptDesc&, const InterruptDesc&) const;
+```
+
+- `reset`：设置 PC/SP/架构寄存器。ARM 可在里面读向量表拿初始 SP/PC。
+- `resolve_bit_addr`：8051 的位地址规则放在这里，核心不再写死。
+- `on_mmio_write`/`on_mmio_read`：架构相关副作用；简单的“写 A 置 B 位”优先用模型的 `on_write` 动作。
+- `CpuRegisters::r` 已扩到 32 个，覆盖 ARM（16）和 RISC-V（32）。
 
 ## 6. ISA 扩展
 

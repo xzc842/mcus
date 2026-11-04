@@ -35,6 +35,22 @@ struct MemoryRegion {
     }
 };
 
+// 寄存器读写后的通用动作（由模型描述，核心执行）
+struct RegisterAction {
+    enum class Kind {
+        SetBit,
+        ClearBit,
+        SetValue,
+        ClearValue,
+    };
+
+    Kind kind = Kind::SetBit;
+    SpaceId space;
+    Addr addr = 0;
+    uint8_t bit = 0;
+    uint32_t value = 0;
+};
+
 struct RegisterDesc {
     std::string name;
     SpaceId space;
@@ -45,6 +61,8 @@ struct RegisterDesc {
     std::string read_alias;
     std::string write_alias;
     std::vector<std::pair<Addr, uint8_t>> bit_aliases;
+    std::vector<RegisterAction> on_write;
+    std::vector<RegisterAction> on_read;
 };
 
 struct PinDesc {
@@ -55,11 +73,18 @@ struct PinDesc {
     SpaceId source_space;
     Addr source_reg = 0;
     uint8_t source_bit = 0;
+
+    // 方向控制寄存器（可选）：写该寄存器会更新 PinState.direction
+    bool has_direction = false;
+    SpaceId direction_space;
+    Addr direction_reg = 0;
+    uint8_t direction_bit = 0;
 };
 
 struct InterruptDesc {
     std::string name;
     uint32_t number = 0;
+    uint32_t priority = 0;          // 数值越小优先级越高；默认等于 number
     Addr vector_addr = 0;
     SpaceId vector_space = "code";
     Addr enable_reg = 0;
@@ -88,6 +113,7 @@ struct TimerDesc {
     struct FlagBit { Addr reg; uint8_t bit; SpaceId space = "sfr"; } overflow;
     uint32_t irq = 0;
     std::string overflow_action = "reload";
+    uint32_t prescaler = 1;         // 每 N 个虚拟周期计数一次
 };
 
 // 架构级描述：换芯片只改这里，不改 Cpu/Simulator
@@ -102,6 +128,9 @@ struct ArchDesc {
 
     // 中断压栈宽度（8051 压 2 字节 PC，ARM 压 4/8 字节，RISC-V 压 4 字节）
     uint8_t irq_push_bytes = 2;
+
+    // 栈增长方向：true = 向低地址（ARM/RISC-V），false = 向高地址（8051）
+    bool stack_grows_down = true;
 
     // 快速空间（code/iram/xram，别的架构 flash/ram/eeprom）
     std::vector<SpaceId> fast_spaces;
@@ -153,8 +182,6 @@ struct Model {
     const RegisterDesc* find_register(const SpaceId& space, Addr addr) const;
     const RegisterDesc* find_register_by_name(const std::string& name) const;
     const InterruptDesc* find_interrupt(uint32_t number) const;
-    bool resolve_bit_addr(Addr bit_addr, SpaceId& space,
-                          Addr& byte_addr, uint8_t& bit) const;
 
     size_t mmio_area_size() const;
     size_t pin_area_size() const;

@@ -21,7 +21,7 @@
 
 namespace mcus {
 
-Simulator::Simulator(Model model, std::vector<uint8_t> firmware, Config cfg)
+Simulator::Simulator(Model model, FirmwareImage firmware, Config cfg)
     : model_(std::move(model)), firmware_(std::move(firmware)),
       cfg_(std::move(cfg)),
       shm_(model_, cfg_.simulator.shm_name),
@@ -34,6 +34,7 @@ Simulator::Simulator(Model model, std::vector<uint8_t> firmware, Config cfg)
     }
     clock_step_interval_ = cfg_.simulator.clock_step_interval;
     if (clock_step_interval_ == 0) clock_step_interval_ = 1;
+    timer_acc_.assign(model_.timers.size(), 0);
 }
 
 Simulator::~Simulator() { stop(); }
@@ -150,52 +151,96 @@ void Simulator::do_reset() {
 }
 
 void Simulator::advance_clock(VirtTime delta) {
-    for (const auto& t : model_.timers) {
+    auto reg_width = [&](const SpaceId& space, Addr addr) -> uint8_t {
+        const RegisterDesc* r = model_.find_register(space, addr);
+        return r ? r->width : 8;
+    };
+
+    for (size_t ti = 0; ti < model_.timers.size(); ++ti) {
+        const auto& t = model_.timers[ti];
         const auto& sp = t.counter.reg_space;
-        uint32_t ctrl = shm_.read_reg(t.enable.space, t.enable.reg, 32);
+
+        const uint8_t enable_w = reg_width(t.enable.space, t.enable.reg);
+        uint32_t ctrl = shm_.read_reg(t.enable.space, t.enable.reg, enable_w);
         if (!(ctrl & (1u << t.enable.bit))) continue;
 
-        uint32_t lo = shm_.read_reg(sp, t.counter.lo_reg, 32);
-        uint32_t hi = (t.counter.bits > 8) ? shm_.read_reg(sp, t.counter.hi_reg, 32) : 0;
-        uint64_t cur = (static_cast<uint64_t>(hi) << 8) | lo;
-        uint64_t mask = (t.counter.bits >= 64) ? ~0ull : ((1ull << t.counter.bits) - 1);
+        const uint64_t prescaler = t.prescaler == 0 ? 1 : t.prescaler;
+        const uint64_t total = timer_acc_[ti] + delta;
+        const uint64_t ticks = total / prescaler;
+        timer_acc_[ti] = total % prescaler;
+        if (ticks == 0) continue;
+
+        // bits > 8 且 hi_reg 非 0：两个 8 位寄存器拼成计数器；
+        // 否则 lo_reg 本身就是一个 bits 位的寄存器（8/16/32）。
+        const bool dual = t.counter.bits > 8 && t.counter.hi_reg != 0;
+        auto read_counter_reg = [&](Addr addr) -> uint64_t {
+            return shm_.read_reg(sp, addr, reg_width(sp, addr));
+        };
+
+        uint64_t cur = dual
+                           ? ((read_counter_reg(t.counter.hi_reg) << 8) |
+                              read_counter_reg(t.counter.lo_reg))
+                           : read_counter_reg(t.counter.lo_reg);
+        const uint64_t mask =
+            (t.counter.bits >= 64) ? ~0ull : ((1ull << t.counter.bits) - 1);
 
         uint64_t next;
         bool overflow;
         if (t.counter.up) {
-            next = (cur + delta) & mask;
-            overflow = ((cur + delta) > mask);
+            next = (cur + ticks) & mask;
+            overflow = ((cur + ticks) > mask);
         } else {
-            if (delta > cur) {
-                next = mask - ((delta - cur - 1) & mask);
+            if (ticks > cur) {
+                next = mask - ((ticks - cur - 1) & mask);
                 overflow = true;
             } else {
-                next = cur - delta;
+                next = cur - ticks;
                 overflow = false;
             }
         }
 
         if (overflow) {
             if (t.overflow_action == "reload") {
-                uint32_t rlo = shm_.read_reg(sp, t.counter.reload_lo_reg, 32);
-                uint32_t rhi = (t.counter.bits > 8)
-                                   ? shm_.read_reg(sp, t.counter.reload_hi_reg, 32)
-                                   : 0;
-                next = (static_cast<uint64_t>(rhi) << 8) | rlo;
+                next = dual
+                           ? ((read_counter_reg(t.counter.reload_hi_reg) << 8) |
+                              read_counter_reg(t.counter.reload_lo_reg))
+                           : read_counter_reg(t.counter.reload_lo_reg);
             } else if (t.overflow_action == "reset") {
                 shm_.control()->reset_pin.store(1);
                 next = 0;
             }
-            uint32_t st = shm_.read_reg(t.overflow.space, t.overflow.reg, 32);
+
+            const uint8_t flag_w = reg_width(t.overflow.space, t.overflow.reg);
+            uint32_t st = shm_.read_reg(t.overflow.space, t.overflow.reg, flag_w);
             st |= (1u << t.overflow.bit);
-            shm_.write_reg(t.overflow.space, t.overflow.reg, st, 32);
+            shm_.write_reg(t.overflow.space, t.overflow.reg, st, flag_w);
+
+            // 按模型里的 irq 号置挂起位
+            if (const InterruptDesc* irq = model_.find_interrupt(t.irq)) {
+                const uint8_t pw =
+                    reg_width(irq->pending_space, irq->pending_reg);
+                uint32_t pending = shm_.read_reg(irq->pending_space,
+                                                 irq->pending_reg, pw);
+                pending |= (1u << irq->pending_bit);
+                shm_.write_reg(irq->pending_space, irq->pending_reg,
+                               pending, pw);
+            }
         }
 
-        shm_.write_reg(sp, t.counter.lo_reg,
-                       static_cast<uint32_t>(next & 0xFF), 32);
-        if (t.counter.bits > 8)
+        if (dual) {
+            shm_.write_reg(sp, t.counter.lo_reg,
+                           static_cast<uint32_t>(next & 0xFF),
+                           reg_width(sp, t.counter.lo_reg));
             shm_.write_reg(sp, t.counter.hi_reg,
-                           static_cast<uint32_t>((next >> 8) & 0xFF), 32);
+                           static_cast<uint32_t>((next >> 8) & 0xFF),
+                           reg_width(sp, t.counter.hi_reg));
+        } else {
+            const uint8_t w = reg_width(sp, t.counter.lo_reg);
+            uint64_t v = next;
+            if (w < 32) v &= ((1ull << w) - 1);
+            shm_.write_reg(sp, t.counter.lo_reg,
+                           static_cast<uint32_t>(v), w);
+        }
     }
 }
 

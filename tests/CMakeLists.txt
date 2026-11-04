@@ -45,3 +45,7 @@ target_link_libraries(test_breakpoint PRIVATE mcus_core)
 target_compile_definitions(test_breakpoint PRIVATE
     MCUS_TEST_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/dummy.json")
 add_test(NAME breakpoint COMMAND test_breakpoint)
+
+add_executable(test_firmware test_firmware.cpp)
+target_link_libraries(test_firmware PRIVATE mcus_core)
+add_test(NAME firmware COMMAND test_firmware)

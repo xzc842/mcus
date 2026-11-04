@@ -48,7 +48,45 @@ public:
 class InstructionSet {
 public:
     virtual ~InstructionSet() = default;
+
+    // 执行一条指令
     virtual ExecResult execute(CpuRegisters& regs, MemoryBus& bus) = 0;
+
+    // ---- 架构钩子：核心 Cpu 不假设具体架构 ----
+    // 复位：设置 PC/SP/架构寄存器。默认按 Model::arch_desc。
+    virtual void reset(CpuRegisters& regs, MemoryBus& bus, const Model& model);
+
+    // 中断进入前保存上下文（默认按 arch_desc.irq_push_bytes 压 PC）
+    virtual void save_context(CpuRegisters& regs, MemoryBus& bus,
+                              const Model& model);
+
+    // 中断返回时恢复上下文（默认空；8051 恢复 IP）
+    virtual void restore_context(CpuRegisters& regs, MemoryBus& bus,
+                                 const Model& model);
+
+    // 中断向量：默认用模型里的 vector_addr；ARM 可读向量表
+    virtual Addr interrupt_vector(const InterruptDesc& irq, MemoryBus& bus,
+                                  const Model& model) const;
+
+    // 中断应答：默认清 pending 位；ARM/NVIC 可改写 1 清零
+    virtual void acknowledge_interrupt(const InterruptDesc& irq,
+                                       MemoryBus& bus, const Model& model);
+
+    // 位地址解析（可选；8051 使用）
+    virtual bool resolve_bit_addr(const Model& model, Addr bit_addr,
+                                  SpaceId& space, Addr& byte_addr,
+                                  uint8_t& bit) const;
+
+    // MMIO 读/写后的架构相关副作用（默认空）
+    virtual void on_mmio_write(const Model& model, MemoryBus& bus,
+                               const SpaceId& space, Addr addr,
+                               uint32_t value, uint8_t width);
+    virtual void on_mmio_read(const Model& model, MemoryBus& bus,
+                              const SpaceId& space, Addr addr, uint8_t width);
+
+    // 中断优先级：返回 true 表示 a 比 b 更优先。默认按 priority 数值小者优先。
+    virtual bool higher_priority(const InterruptDesc& a,
+                                 const InterruptDesc& b) const;
 };
 
 // ISA 实例销毁器：外部 ISA 库可以导出自己的 destroy，避免跨库 delete

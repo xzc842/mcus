@@ -46,6 +46,7 @@ add_library(mcus_core SHARED
     src/cpu.cpp
     src/simulator.cpp
     src/config.cpp
+    src/isa_base.cpp
     src/isa_registry.cpp
     src/firmware.cpp
     src/log.cpp
