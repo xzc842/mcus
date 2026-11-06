@@ -165,6 +165,7 @@ private:
     };
     std::vector<UartRuntime> uart_rt_;
     std::vector<SpiRuntime> spi_rt_;
+    std::vector<uint8_t> usb_tx_pending_;
     std::vector<PwmRuntime> pwm_rt_;
     std::vector<AdcRuntime> adc_rt_;
     std::vector<TkeyRuntime> tkey_rt_;
