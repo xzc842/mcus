@@ -868,8 +868,6 @@ void Cpu::poll_bus_in() {
                 uint8_t data[64]{};
                 for (uint16_t i = 0; i < req; ++i)
                     data[i] = static_cast<uint8_t>(read_usb_byte(u.ep, i));
-                if (u.ep == 2) MCUS_INFO("IN2 x84=" + std::to_string(read8("xram",84)) +
-                    " d0=" + std::to_string(data[0]) + " req=" + std::to_string(req));
                 emit_usb_event(u.xfer_id, UsbToken::In, u.ep,
                                UsbHandshake::Ack, data, req);
                 if (ed.len_reg != 0) {
