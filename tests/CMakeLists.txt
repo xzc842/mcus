@@ -49,3 +49,21 @@ add_test(NAME breakpoint COMMAND test_breakpoint)
 add_executable(test_firmware test_firmware.cpp)
 target_link_libraries(test_firmware PRIVATE mcus_core)
 add_test(NAME firmware COMMAND test_firmware)
+
+add_executable(test_generic_model test_generic_model.cpp)
+target_link_libraries(test_generic_model PRIVATE mcus_core)
+target_compile_definitions(test_generic_model PRIVATE
+    MCUS_TEST_GENERIC_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/generic.json")
+add_test(NAME generic_model COMMAND test_generic_model)
+
+add_executable(test_interrupt test_interrupt.cpp)
+target_link_libraries(test_interrupt PRIVATE mcus_core)
+target_compile_definitions(test_interrupt PRIVATE
+    MCUS_TEST_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/dummy.json")
+add_test(NAME interrupt COMMAND test_interrupt)
+
+add_executable(test_peripherals test_peripherals.cpp)
+target_link_libraries(test_peripherals PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_peripherals PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json")
+add_test(NAME peripherals COMMAND test_peripherals)

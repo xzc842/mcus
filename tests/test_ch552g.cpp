@@ -33,6 +33,16 @@ int main() {
 
     assert(!m.timers.empty());
     assert(m.find_interrupt(1));
+
+    assert(m.uarts.size() == 2);
+    assert(m.spis.size() == 1);
+    assert(m.pwms.size() == 1);
+    assert(m.adcs.size() == 1);
+    assert(m.tkeys.size() == 1);
+    assert(m.gpio_irq.present);
+    assert(m.usb.present && m.usb.endpoints.size() == 5);
+    assert(m.pins[0].has_direction);
+
     std::cout << "test_ch552g passed\n";
     return 0;
 }

@@ -1,0 +1,50 @@
+{
+  "name": "generic",
+  "description": "非 8051 空间命名的通用模型，用于验证核心不绑定芯片/空间名",
+  "arch": "mcus-minimal",
+  "crystal_hz": 12000000,
+  "cycles_per_instruction": 1,
+  "reset_vector": 0,
+  "reset_space": "flash",
+  "initial_sp": 67584,
+  "sp_space": "ram",
+
+  "arch_desc": {
+    "global_irq_enable": { "space": "periph", "reg": 536870928, "bit": 0, "present": true },
+    "irq_push_bytes": 2,
+    "stack_grows_down": true,
+    "fast_spaces": ["flash", "ram"],
+    "reset_space": "flash",
+    "reset_vector": 0,
+    "sp_space": "ram",
+    "initial_sp": 67584,
+    "sp_reg": 0,
+    "sp_reg_space": "ram",
+    "has_pc_reg": false
+  },
+
+  "regions": [
+    { "name": "flash",  "space": "flash",  "base": 0,          "size": 65536, "is_mmio": false },
+    { "name": "ram",    "space": "ram",    "base": 65536,      "size": 4096,  "is_mmio": false },
+    { "name": "periph", "space": "periph", "base": 536870912,  "size": 256,   "is_mmio": true  }
+  ],
+
+  "registers": [
+    { "name": "GPIO_OUT",   "space": "periph", "addr": 536870912, "width": 32, "semantics": "write_trigger", "reset_value": 0 },
+    { "name": "IRQ_ENABLE", "space": "periph", "addr": 536870928, "width": 32, "semantics": "plain", "reset_value": 0 },
+    { "name": "IRQ_PENDING","space": "periph", "addr": 536870932, "width": 32, "semantics": "plain", "reset_value": 0 }
+  ],
+
+  "pins": [
+    { "name": "PA0", "number": 0, "functions": ["gpio"], "reset_function": 0,
+      "source_space": "periph", "source_reg": 536870912, "source_bit": 0 }
+  ],
+
+  "interrupts": [
+    { "name": "IRQ0", "number": 1, "vector_addr": 16, "vector_space": "flash",
+      "enable_reg": 536870928, "enable_space": "periph", "enable_bit": 0,
+      "pending_reg": 536870932, "pending_space": "periph", "pending_bit": 0 }
+  ],
+
+  "timers": []
+}

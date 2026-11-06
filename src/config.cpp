@@ -56,6 +56,9 @@ Config Config::load_from_file(const std::string& path) {
                 static_cast<int64_t>(cfg.simulator.clock_step_interval)));
         if (cfg.simulator.clock_step_interval == 0)
             cfg.simulator.clock_step_interval = 1;
+        cfg.simulator.bus_wait_timeout_ms = static_cast<uint32_t>(
+            toml::find_or<int64_t>(sim, "bus_wait_timeout_ms",
+                static_cast<int64_t>(cfg.simulator.bus_wait_timeout_ms)));
     }
 
     {

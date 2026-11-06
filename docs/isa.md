@@ -291,5 +291,5 @@ TEST(IsaArm, Add) {
 
 - `src/isa_8051.cpp`：8051 完整指令集；
 - `src/isa_registry.cpp` 的 `MinimalIsa`：最小 ISA；
-- `docs/external_contract.md`：共享内存和事件流契约；
+- `docs/external.md`：共享内存、双向事件流和总线/USB 契约；
 - `models/schema.md`：模型字段说明。

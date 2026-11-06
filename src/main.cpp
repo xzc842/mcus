@@ -42,7 +42,7 @@ void usage(const char* argv0) {
         << "usage: " << argv0 << " --isa <isa.so> --model <model.json> "
         << "--firmware <firmware.hex|firmware.bin> --config <config.toml>\n"
         << "\n"
-        << "  --isa, -i       架构指令集动态库（如 libmcus_isa_8051.so）\n"
+        << "  --isa, -i       架构指令集动态库（如 libmcus_isa_<arch>.so）\n"
         << "  --model, -m     芯片模型文件（JSON）\n"
         << "  --firmware, -f  固件文件（.bin 或 .hex/.ihx）\n"
         << "  --config, -c    配置文件（TOML）\n";

@@ -34,6 +34,10 @@ control_poll_interval = 64
 
 clock_step_interval = 100
 
+# 外部程序 attach 事件流后，SPI 等同步总线等待响应的真实时间上限（毫秒）。
+# 0 = 无限等待；超时后使用默认 MISO(0xFF) 完成传输。
+bus_wait_timeout_ms = 1000
+
 
 [crystal]
 # 虚拟晶振频率（Hz）。所有虚拟时间以此为基准，不跟真实时间对齐。

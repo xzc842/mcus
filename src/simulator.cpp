@@ -34,6 +34,7 @@ Simulator::Simulator(Model model, FirmwareImage firmware, Config cfg)
     }
     clock_step_interval_ = cfg_.simulator.clock_step_interval;
     if (clock_step_interval_ == 0) clock_step_interval_ = 1;
+    bus_wait_timeout_ms_ = cfg_.simulator.bus_wait_timeout_ms;
     timer_acc_.assign(model_.timers.size(), 0);
 }
 
@@ -83,7 +84,8 @@ void Simulator::handle_control_commands() {
             for (uint32_t i = 0; i < n && !cpu_.halted(); ++i) {
                 VirtTime dt = cpu_.step();
                 if (dt == 0) break;
-                virtual_time_ += dt;
+                cpu_.advance_peripherals(dt);
+                virtual_time_ = cpu_.now();
                 shm_.control()->virtual_time.store(virtual_time_, std::memory_order_relaxed);
                 advance_clock(dt);
             }
@@ -326,10 +328,28 @@ void Simulator::cpu_loop() {
                 ctl->status.store(static_cast<uint32_t>(ControlStatus::Halted));
                 if (!cfg_.simulator.stay_alive) break;
             }
+            if (cpu_.waiting_for_bus()) {
+                const auto now = std::chrono::steady_clock::now();
+                if (!bus_waiting_) {
+                    bus_waiting_ = true;
+                    bus_wait_start_ = now;
+                } else if (bus_wait_timeout_ms_ > 0 &&
+                           std::chrono::duration_cast<std::chrono::milliseconds>(
+                               now - bus_wait_start_).count() >=
+                               bus_wait_timeout_ms_) {
+                    MCUS_WARN("bus wait timeout, using default MISO");
+                    cpu_.force_complete_spi();
+                    bus_waiting_ = false;
+                }
+            } else {
+                bus_waiting_ = false;
+            }
             std::this_thread::yield();
             continue;
         }
-        virtual_time_ += dt;
+        bus_waiting_ = false;
+        cpu_.advance_peripherals(dt);
+        virtual_time_ = cpu_.now();
         ctl->virtual_time.store(virtual_time_, std::memory_order_relaxed);
         acc_clock_ += dt;
         if (acc_clock_ >= clock_step_interval_) {

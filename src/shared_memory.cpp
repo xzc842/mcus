@@ -209,9 +209,27 @@ void SharedMemory::reset_all() {
         write_reg(rd.space, rd.addr, rd.reset_value, rd.width);
     auto* p = pins();
     for (size_t i = 0; i < model_.pins.size(); ++i) {
-        p[i].function.store(model_.pins[i].reset_function);
-        p[i].value.store(0);
-        p[i].direction.store(0);
+        const auto& pd = model_.pins[i];
+        uint32_t value = 0;
+        if (!pd.source_space.empty() && pd.source_reg != 0) {
+            const RegisterDesc* rd =
+                model_.find_register(pd.source_space, pd.source_reg);
+            const uint8_t width = rd ? rd->width : 8;
+            uint32_t reg = read_reg(pd.source_space, pd.source_reg, width);
+            value = (reg >> pd.source_bit) & 1u;
+        }
+        uint32_t direction = 0;
+        if (pd.has_direction && pd.direction_reg != 0) {
+            const RegisterDesc* rd =
+                model_.find_register(pd.direction_space, pd.direction_reg);
+            const uint8_t width = rd ? rd->width : 8;
+            uint32_t reg =
+                read_reg(pd.direction_space, pd.direction_reg, width);
+            direction = (reg >> pd.direction_bit) & 1u;
+        }
+        p[i].function.store(pd.reset_function);
+        p[i].value.store(value);
+        p[i].direction.store(direction);
     }
     std::memset(interrupt_bitmap(), 0, irq_size_);
     auto* ih = inject_header();

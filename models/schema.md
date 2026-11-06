@@ -1,6 +1,6 @@
 # mcus 芯片模型文件 schema
 
-> 完整字段（`arch`、`arch_desc`、`timers`、寄存器 `on_write`/`on_read`、引脚方向、中断优先级、定时器预分频）见 [docs/model_guide.md](../docs/model_guide.md)。本文件只列早期核心字段。
+> 完整字段（`arch`、`arch_desc`、`timers`、`uarts`、`spis`、`pwms`、`adcs`、`tkeys`、`gpio_irq`、`usb`、寄存器 `on_write`/`on_read`、引脚方向、中断优先级、定时器预分频）见 [docs/model_guide.md](../docs/model_guide.md)。本文件只列早期核心字段。
 
 模型文件为 JSON，描述一颗芯片的静态结构。运行时状态（寄存器当前值、引脚电平、中断挂起）不在模型文件里，而在共享内存中。
 
@@ -14,7 +14,9 @@
 | crystal_hz | number | 是 | 默认晶振频率（Hz），可被配置文件覆盖 |
 | cycles_per_instruction | number | 是 | 每条指令粗略虚拟耗时（晶振周期） |
 | reset_vector | number | 是 | 复位后 PC 值，必须落在某个非 MMIO 区域内 |
+| reset_space | string | 是 | 复位向量所在空间名 |
 | initial_sp | number | 是 | 复位后 SP 初值，必须落在 RAM 内 |
+| sp_space | string | 是 | 栈所在空间名 |
 | regions | array | 是 | 内存区域列表 |
 | registers | array | 是 | MMIO 寄存器描述列表 |
 | pins | array | 是 | 引脚列表 |
@@ -30,6 +32,7 @@
 | base | number | 起始地址 |
 | size | number | 字节数 |
 | is_mmio | bool | true 表示 MMIO 区域，访问走共享内存和事件流；false 表示普通内存 |
+| read_only | bool | 普通内存区域是否只读（如 Flash/ROM），默认 false |
 
 约束：区域之间不得重叠；reset_vector 必须落在非 MMIO 区域且在该区域内；initial_sp 必须落在非 MMIO 区域。
 

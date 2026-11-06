@@ -83,11 +83,35 @@ int main() {
     }
     {
         EventStream reader(name, 0, false);
+        assert(reader.host_attached());
         assert(!reader.empty());
         DebugEvent out{};
         assert(reader.pop(out));
         assert(out.u.mmio.value == 7);
         assert(reader.empty());
+
+        // 双向：外部程序 push_in，模拟器 pop_in
+        DebugEvent in{};
+        in.type = DebugEventType::Bus;
+        in.u.bus.kind = static_cast<uint8_t>(BusEventKind::UartRx);
+        in.u.bus.bus_id = 0;
+        in.u.bus.len = 1;
+        in.u.bus.data[0] = 0x42;
+        assert(reader.push_in(in));
+        assert(reader.in_size() == 1);
+        assert(!reader.in_empty());
+        DebugEvent got{};
+        assert(reader.pop_in(got));
+        assert(got.type == DebugEventType::Bus);
+        assert(got.u.bus.data[0] == 0x42);
+        assert(reader.in_empty());
+
+        for (int i = 0; i < 4; ++i) assert(reader.push_in(in));
+        assert(reader.in_full());
+        assert(!reader.push_in(in));
+        assert(reader.in_backpressure());
+        reader.clear_in_backpressure();
+        assert(!reader.in_backpressure());
     }
 
     cleanup(name);

@@ -23,7 +23,7 @@
   },
 
   "regions": [
-    { "name": "code", "space": "code", "base": 0,    "size": 16384, "is_mmio": false },
+    { "name": "code", "space": "code", "base": 0,    "size": 16384, "is_mmio": false, "read_only": true },
     { "name": "iram", "space": "iram", "base": 0,    "size": 256,   "is_mmio": false },
     { "name": "sfr",  "space": "sfr",  "base": 128,  "size": 128,   "is_mmio": true  },
     { "name": "xram", "space": "xram", "base": 0, "size": 1024,"is_mmio": false, "addr_mask": 1023 }
@@ -76,8 +76,7 @@
     { "name": "TH1",         "space": "sfr", "addr": 141, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "SCON",        "space": "sfr", "addr": 152, "width": 8, "semantics": "plain", "reset_value": 0 },
-    { "name": "SBUF",        "space": "sfr", "addr": 153, "width": 8, "semantics": "fifo", "reset_value": 0,
-      "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 152, "bit": 1 } ] },
+    { "name": "SBUF",        "space": "sfr", "addr": 153, "width": 8, "semantics": "fifo", "reset_value": 0 },
 
     { "name": "T2CON",       "space": "sfr", "addr": 200, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "T2MOD",       "space": "sfr", "addr": 201, "width": 8, "semantics": "plain", "reset_value": 0 },
@@ -92,15 +91,13 @@
     { "name": "PWM_CK_SE",   "space": "sfr", "addr": 158, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "SPI0_STAT",   "space": "sfr", "addr": 248, "width": 8, "semantics": "plain", "reset_value": 8 },
-    { "name": "SPI0_DATA",   "space": "sfr", "addr": 249, "width": 8, "semantics": "fifo", "reset_value": 0,
-      "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 248, "bit": 4 } ] },
+    { "name": "SPI0_DATA",   "space": "sfr", "addr": 249, "width": 8, "semantics": "fifo", "reset_value": 0 },
     { "name": "SPI0_CTRL",   "space": "sfr", "addr": 250, "width": 8, "semantics": "plain", "reset_value": 2 },
     { "name": "SPI0_CK_SE",  "space": "sfr", "addr": 251, "width": 8, "semantics": "plain", "reset_value": 32 },
     { "name": "SPI0_SETUP",  "space": "sfr", "addr": 252, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "SCON1",       "space": "sfr", "addr": 192, "width": 8, "semantics": "plain", "reset_value": 64 },
-    { "name": "SBUF1",       "space": "sfr", "addr": 193, "width": 8, "semantics": "fifo", "reset_value": 0,
-      "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 192, "bit": 1 } ] },
+    { "name": "SBUF1",       "space": "sfr", "addr": 193, "width": 8, "semantics": "fifo", "reset_value": 0 },
     { "name": "SBAUD1",      "space": "sfr", "addr": 194, "width": 8, "semantics": "plain", "reset_value": 0 },
 
     { "name": "ADC_CTRL",    "space": "sfr", "addr": 128, "width": 8, "semantics": "plain", "reset_value": 0 },
@@ -131,37 +128,53 @@
 
     "pins": [
     { "name": "P1.0", "number": 0,  "functions": ["gpio", "t2_cap1", "tin0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 0 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 0,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 0 },
     { "name": "P1.1", "number": 1,  "functions": ["gpio", "t2ex_cap2", "tin1", "vbus2", "ain0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 1 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 1,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 1 },
     { "name": "P1.2", "number": 2,  "functions": ["gpio", "x1", "rxd0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 2 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 2,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 2 },
     { "name": "P1.3", "number": 3,  "functions": ["gpio", "x0", "txd0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 3 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 3,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 3 },
     { "name": "P1.4", "number": 4,  "functions": ["gpio", "t2_cap1", "scs", "tin2", "ucc1", "ain1"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 4 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 4,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 4 },
     { "name": "P1.5", "number": 5,  "functions": ["gpio", "mosi", "pwm1", "tin3", "ucc2", "ain2"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 5 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 5,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 5 },
     { "name": "P1.6", "number": 6,  "functions": ["gpio", "miso", "rxd1", "tin4"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 6 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 6,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 6 },
     { "name": "P1.7", "number": 7,  "functions": ["gpio", "sck", "txd1", "tin5"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 7 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 144, "source_bit": 7,
+      "direction_space": "sfr", "direction_reg": 147, "direction_bit": 7 },
     { "name": "P3.0", "number": 8,  "functions": ["gpio", "pwm1", "rxd0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 0 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 0,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 0 },
     { "name": "P3.1", "number": 9,  "functions": ["gpio", "pwm2", "txd0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 1 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 1,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 1 },
     { "name": "P3.2", "number": 10, "functions": ["gpio", "txd1", "int0", "vbus1", "ain3"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 2 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 2,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 2 },
     { "name": "P3.3", "number": 11, "functions": ["gpio", "int1"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 3 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 3,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 3 },
     { "name": "P3.4", "number": 12, "functions": ["gpio", "pwm2", "rxd1", "t0"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 4 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 4,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 4 },
     { "name": "P3.5", "number": 13, "functions": ["gpio", "t1"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 5 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 5,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 5 },
     { "name": "P3.6", "number": 14, "functions": ["gpio", "udp"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 6 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 6,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 6 },
     { "name": "P3.7", "number": 15, "functions": ["gpio", "udm"],
-      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 7 },
+      "reset_function": 0, "source_space": "sfr", "source_reg": 176, "source_bit": 7,
+      "direction_space": "sfr", "direction_reg": 151, "direction_bit": 7 },
     { "name": "RST",  "number": 16, "functions": ["reset", "t2ex_cap2"],
       "reset_function": 0 }
   ],
@@ -174,16 +187,78 @@
     { "name": "UART0",  "number": 4,  "vector_addr": 35,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 152, "pending_space": "sfr", "pending_bit": 1, "clear_pending": false },
     { "name": "TMR2",   "number": 5,  "vector_addr": 43,  "vector_space": "code", "enable_reg": 168, "enable_space": "sfr", "enable_bit": 5, "pending_reg": 200, "pending_space": "sfr", "pending_bit": 7 },
         { "name": "SPI0",   "number": 6,  "vector_addr": 51,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 0, "pending_reg": 248, "pending_space": "sfr", "pending_bit": 4, "clear_pending": false },
-    { "name": "TKEY",   "number": 7,  "vector_addr": 59,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 1, "pending_reg": 195, "pending_space": "sfr", "pending_bit": 7 },
-    { "name": "USB",    "number": 8,  "vector_addr": 67,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 2, "pending_reg": 216, "pending_space": "sfr", "pending_bit": 1 },
-    { "name": "ADC",    "number": 9,  "vector_addr": 75,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 3, "pending_reg": 128, "pending_space": "sfr", "pending_bit": 5 },
+    { "name": "TKEY",   "number": 7,  "vector_addr": 59,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 1, "pending_reg": 195, "pending_space": "sfr", "pending_bit": 7, "clear_pending": false },
+    { "name": "USB",    "number": 8,  "vector_addr": 67,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 2, "pending_reg": 216, "pending_space": "sfr", "pending_bit": 1, "clear_pending": false },
+    { "name": "ADC",    "number": 9,  "vector_addr": 75,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 3, "pending_reg": 128, "pending_space": "sfr", "pending_bit": 5, "clear_pending": false },
         { "name": "UART1",  "number": 10, "vector_addr": 83,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 4, "pending_reg": 192, "pending_space": "sfr", "pending_bit": 1, "clear_pending": false },
-    { "name": "PWMX",   "number": 11, "vector_addr": 91,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 5, "pending_reg": 157, "pending_space": "sfr", "pending_bit": 4 },
-    { "name": "GPIO",   "number": 12, "vector_addr": 99,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 6, "pending_reg": 198, "pending_space": "sfr", "pending_bit": 6 },
+    { "name": "PWMX",   "number": 11, "vector_addr": 91,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 5, "pending_reg": 157, "pending_space": "sfr", "pending_bit": 4, "clear_pending": false },
+    { "name": "GPIO",   "number": 12, "vector_addr": 99,  "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 6, "pending_reg": 198, "pending_space": "sfr", "pending_bit": 6, "clear_pending": false },
     { "name": "WDOG",   "number": 13, "vector_addr": 107, "vector_space": "code", "enable_reg": 232, "enable_space": "sfr", "enable_bit": 7, "pending_reg": 185, "pending_space": "sfr", "pending_bit": 5 }
   ],
 
-    "timers": [
+    "uarts": [
+    { "name": "UART0", "irq": 4, "space": "sfr", "ctrl": 152, "data": 153,
+      "tx_flag_bit": 1, "rx_flag_bit": 0, "tx_cycles": 64, "rx_fifo": 8 },
+    { "name": "UART1", "irq": 10, "space": "sfr", "ctrl": 192, "data": 193,
+      "tx_flag_bit": 1, "rx_flag_bit": 0, "tx_cycles": 64, "rx_fifo": 8 }
+  ],
+
+  "spis": [
+    { "name": "SPI0", "irq": 6, "space": "sfr", "data": 249, "stat": 248, "ctrl": 250,
+      "done_bit": 4, "busy_bit": 7, "xfer_cycles": 8 }
+  ],
+
+  "pwms": [
+    { "name": "PWM", "irq": 11, "space": "sfr", "ctrl": 157, "data1": 156, "data2": 155,
+      "ck_se": 158, "if_bit": 4, "enable_bit1": 0, "enable_bit2": 1,
+      "period": 256, "prescaler": 1,
+      "pins": [
+        { "channel": 1, "pin": "P1.5", "function": "pwm1" },
+        { "channel": 1, "pin": "P3.0", "function": "pwm1" },
+        { "channel": 2, "pin": "P3.1", "function": "pwm2" },
+        { "channel": 2, "pin": "P3.4", "function": "pwm2" }
+      ] }
+  ],
+
+  "adcs": [
+    { "name": "ADC", "irq": 9, "space": "sfr", "ctrl": 128, "cfg": 154, "data": 159,
+      "start_bit": 0, "if_bit": 5, "busy_bit": 4, "conversion_cycles": 96,
+      "channel_mask": 15, "channel_shift": 0,
+      "channels": [
+        { "channel": 0, "pin": "P1.1" },
+        { "channel": 1, "pin": "P1.4" },
+        { "channel": 2, "pin": "P1.5" },
+        { "channel": 3, "pin": "P3.2" }
+      ] }
+  ],
+
+  "tkeys": [
+    { "name": "TKEY", "irq": 7, "space": "sfr", "ctrl": 195, "datl": 196, "dath": 197,
+      "start_bit": 0, "if_bit": 7, "scan_cycles": 256, "data_bits": 16,
+      "channels": ["P1.0", "P1.1", "P1.4", "P3.2"] }
+  ],
+
+  "gpio_irq": {
+    "irq": 12, "enable_reg": 199, "enable_space": "sfr",
+    "enable_bit_base": 0, "enable_bits": 8
+  },
+
+  "usb": {
+    "irq": 8, "space": "sfr",
+    "int_fg": 216, "int_st": 217, "mis_st": 218, "rx_len": 219,
+    "int_en": 225, "ctrl": 226, "dev_ad": 227,
+    "int_fg_bit": 1,
+    "buffer_space": "xram", "buffer_base": 704, "buffer_stride": 64,
+    "endpoints": [
+      { "index": 0, "ctrl": 220, "max_packet": 64 },
+      { "index": 1, "ctrl": 210, "max_packet": 64 },
+      { "index": 2, "ctrl": 212, "max_packet": 64 },
+      { "index": 3, "ctrl": 214, "max_packet": 64 },
+      { "index": 4, "ctrl": 222, "max_packet": 64 }
+    ]
+  },
+
+  "timers": [
     {
       "name": "TIMER0",
       "counter": { "bits": 16, "lo_reg": 138, "hi_reg": 140,

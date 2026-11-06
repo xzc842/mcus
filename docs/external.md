@@ -1,6 +1,6 @@
 # 外部程序与 mcus 的交互
 
-> **注意**：事件流已升级为统一 `DebugEventStream`，记录类型为 `Mmio / Pin / Bus / Irq`，`EventStream` 支持 `create=false` 的 attach 模式。本文中旧的 `MmioEvent` 事件流描述已过时，以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
+> **注意**：事件流已升级为双向 `DebugEvent` 流，记录类型为 `Mmio / Pin / Bus / Irq / Usb`；同一个共享内存对象里包含 out/in 两个 SPSC 环，`EventStream` 支持 `create=false` 的 attach 模式，以及 `push_in()`/`pop_in()` 反向收发。以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
 
 外部程序不属于 mcus 项目，通过 POSIX 共享内存和事件流与模拟器交互。**外部程序不链接 `libmcus_core` 的模拟器部分，只通过共享内存和事件流读写；可以链接 `libmcus_core` 的 `SharedMemory`/`EventStream` 类简化访问。**
 
@@ -148,7 +148,7 @@ mcus::Model model = mcus::Model::load_from_file("models/ch552g.json");
 mcus::SharedMemory shm(model, "/mcus_shm", false);  // create=false，只读
 
 uint32_t p1 = shm.read_reg("sfr", 0x90, 8);
-uint32_t scon = shm.read_reg("sfr", 0x98, 8);
+uint32_t status = shm.read_reg("sfr", 0x98, 8); // 地址以模型为准
 uint32_t pc = shm.control()->pc.load();
 ```
 
@@ -349,90 +349,168 @@ bp[0] addr=0xD3 enabled=1
 bp[1] addr=0xE5 enabled=1
 ```
 
-## 10. 事件流
+## 10. 事件流（双向）
 
 事件流是独立共享内存，`config.toml` 的 `simulator.stream_name`（默认 `/mcus_stream`），`stream_capacity`（默认 4096）。
+
+同一个共享内存对象里有两个独立的 SPSC 环：
+
+- **out 环**：模拟器 → 外部程序。MMIO / Pin / Bus 请求 / Irq / USB 事件。
+- **in 环**：外部程序 → 模拟器。UART RX / SPI MISO / USB SETUP/IN/OUT。
+- 两个环共用一个全局 `seq` 分配器，`seq` 越大事件越新。
 
 ### 10.1 布局
 
 ```
-Header (head/tail/capacity/backpressure) → MmioEvent 数组
+Header → out[capacity] → in[capacity]      (每个元素都是 DebugEvent)
 ```
 
 ```c
 struct Header {
-    atomic_uint64_t head;         // 模拟器写
-    atomic_uint64_t tail;         // 外部写
-    atomic_uint64_t capacity;
-    atomic_uint32_t backpressure; // 模拟器写，满时置 1
+    atomic_uint64_t out_head;      // 模拟器写
+    atomic_uint64_t out_tail;      // 外部程序读
+    atomic_uint64_t in_head;       // 外部程序写
+    atomic_uint64_t in_tail;       // 模拟器读
+    atomic_uint64_t capacity;      // 每个环的容量
+    atomic_uint64_t seq;           // 全局事件序号
+    atomic_uint32_t backpressure_out;
+    atomic_uint32_t backpressure_in;
+    atomic_uint32_t version;       // 3
+    atomic_uint32_t host_attached; // attach 时置 1
 };
+```
 
-struct MmioEvent {
+`DebugEvent` 的完整定义见 `include/mcus/types.h`：
+
+```c
+struct DebugEvent {
+    uint64_t seq;
     uint64_t time;
-    uint32_t addr;
-    uint32_t value;
-    uint8_t width;
-    uint8_t access;   // 0=Read, 1=Write
-    uint32_t space_idx;
+    uint8_t  type;      // 0=Mmio 1=Pin 2=Bus 3=Irq 4=Usb
+    uint8_t  reserved[7];
+    union {
+        MmioEvent mmio;
+        PinEvent  pin;
+        BusEvent  bus;
+        IrqEvent  irq;
+        UsbEvent  usb;
+    } u;
 };
 ```
 
-### 10.2 打开事件流
+### 10.2 打开与消费
 
-```c
-int fd = shm_open("/mcus_stream", O_RDWR, 0600);
-struct stat st;
-fstat(fd, &st);
-void* base = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-close(fd);
-
-struct Header* hdr = (struct Header*)base;
-struct MmioEvent* slots = (struct MmioEvent*)((char*)base + sizeof(struct Header));
-```
-
-### 10.3 消费事件
-
-```c
-while (1) {
-    uint64_t tail = atomic_load(&hdr->tail);
-    uint64_t head = atomic_load(&hdr->head);
-    if (tail == head) {
-        usleep(1000);
-        continue;
-    }
-    uint64_t cap = atomic_load(&hdr->capacity);
-    struct MmioEvent ev = slots[tail % cap];
-    atomic_store(&hdr->tail, tail + 1);
-    printf("time=%llu addr=0x%X value=0x%X width=%u access=%u space=%u\n",
-           ev.time, ev.addr, ev.value, ev.width, ev.access, ev.space_idx);
-}
-```
-
-**`space_idx` 是 `Model::space_order` 的索引，`ch552g.json` 的 `space_order` 是 `["code", "iram", "sfr", "xram"]`，`sfr` 是 `2`。**
-
-### 10.4 背压
-
-**`stream_.full()` 时 `hdr->backpressure=1`，`cpu_loop` `yield`，CPU 暂停。** **外部程序消费后 `hdr->backpressure` 由模拟器 `clear_backpressure` 清。**
-
-### 10.5 用 `EventStream` 类
+建议直接链接 `libmcus_core` 使用 `EventStream` 类（`create=false`）：
 
 ```cpp
-#include "mcus/model.h"
 #include "mcus/event_stream.h"
 
-mcus::Model model = mcus::Model::load_from_file("models/ch552g.json");
-mcus::EventStream stream("/mcus_stream", 4096);  // 打开已有事件流
+// 第二个参数在 create=false 时只用于校验，实际容量从共享内存头读取
+mcus::EventStream stream("/mcus_stream", 0, false);
 
 while (1) {
-    mcus::MmioEvent ev;
-    if (!stream.pop(ev)) {
+    mcus::DebugEvent ev;
+    if (!stream.pop(ev)) {           // 从 out 环取
         usleep(1000);
         continue;
     }
-    std::printf("time=%llu addr=0x%X value=0x%X\n",
-                (unsigned long long)ev.time, ev.addr, ev.value);
+    if (ev.type == mcus::DebugEventType::Bus) {
+        const mcus::BusEvent& b = ev.u.bus;
+        // b.bus_id / b.xfer_id / b.kind / b.direction / b.data
+    }
 }
 ```
+
+**建议的启动顺序：** 配置 `start_paused = true` 启动 `mcus` → 外部程序 attach 事件流和共享内存 →
+外部程序写 `command=Resume` → 固件开始执行。这样 SPI 第一次传输时 `host_attached` 已经为 1，
+模拟器会等待外部 MISO 响应，而不是用默认 `0xFF` 抢跑。
+
+`type=Irq` 的 `IrqEvent{number, pending}` 在每次进入中断时写入 out 环；`type=Mmio/Pin` 分别记录寄存器访问和引脚变化。
+
+### 10.3 总线请求/响应
+
+`BusEvent` 用于 UART/SPI/I2C：
+
+```c
+enum BusEventKind { SpiXfer=0, I2cStart=1, I2cAddr=2, I2cData=3,
+                    I2cStop=4, UartTx=5, UartRx=6, PinEdge=7 };
+enum BusDirection { ToHost=0, ToMcu=1 };
+
+struct BusEvent {
+    uint32_t bus_id;      // 同类外设的索引：uarts[i] / spis[i]
+    uint32_t xfer_id;     // 请求/响应配对
+    uint16_t len;
+    uint8_t  kind;
+    uint8_t  direction;
+    uint8_t  flags;
+    uint8_t  reserved;
+    uint8_t  data[64];
+};
+```
+
+- **UART TX**：模拟器写 `SBUF` 后发 `UartTx(ToHost)`。外部程序 `pop()` 收到即可；不需要回复。
+- **UART RX**：外部程序 `push_in(UartRx(ToMcu), bus_id=0)`，模拟器写入接收 FIFO、置 RI。
+- **SPI**：模拟器写 `SPI0_DATA` 后发 `SpiXfer(ToHost, xfer_id=N)`；如果已有外部程序
+  attach 事件流，模拟器会**冻结 CPU/虚拟时间等待** `SpiXfer(ToMcu, xfer_id=N, data[0]=MISO)`，
+  收到后写回 `SPI0_DATA` 并置 SPIF。等待超过 `simulator.bus_wait_timeout_ms` 或没有外部程序时，
+  MISO 默认为 `0xFF` 并继续执行。
+
+示例：
+
+```cpp
+mcus::DebugEvent req;
+if (stream.pop(req) && req.type == mcus::DebugEventType::Bus &&
+    req.u.bus.kind == (uint8_t)mcus::BusEventKind::SpiXfer) {
+    mcus::DebugEvent resp{};
+    resp.type = mcus::DebugEventType::Bus;
+    resp.u.bus = req.u.bus;
+    resp.u.bus.direction = (uint8_t)mcus::BusDirection::ToMcu;
+    resp.u.bus.data[0] = 0x3C;
+    stream.push_in(resp);
+}
+```
+
+### 10.4 USB 包事件
+
+USB 使用 `DebugEventType::Usb`，`UsbEvent` 的 `data[64]` 正好是 Full-Speed 最大包：
+
+```c
+enum UsbToken { Setup=0, In=1, Out=2, Reset=3, Suspend=4, Resume=5, EpReady=6 };
+enum UsbHandshake { None=0, Ack=1, Nak=2, Stall=3 };
+
+struct UsbEvent {
+    uint32_t xfer_id;
+    uint16_t len;
+    uint8_t  ep;
+    uint8_t  token;
+    uint8_t  handshake;
+    uint8_t  reserved[3];
+    uint8_t  data[64];
+};
+```
+
+外部主机程序的角色：
+
+- 发 `UsbEvent{token=Reset}`：清空端点缓冲、`USB_DEV_AD`。
+- 发 `token=Setup`、`ep=0`：8 字节 SETUP 包，模拟器写入 EP0 缓冲、置 `USB_INT_FG`。
+- 发 `token=Out`：OUT 数据，模拟器写入端点缓冲、设置 `USB_RX_LEN`、置 `USB_INT_FG`。
+- 发 `token=In`、`len=N`：模拟器从端点缓冲读 N 字节，回一个 `token=In, handshake=Ack` 的
+  `UsbEvent` 到 out 环。
+- 模拟器在固件写 `UEPn_CTRL` 时发 `token=EpReady`，外部主机可据此安排 IN/OUT。
+
+端点缓冲位于模型 `usb.buffer_space`/`usb.buffer_base`/`usb.buffer_stride` 指定的内存；
+`ch552g.json` 默认是 `xram:0x2C0`，每个端点 64 字节。
+
+### 10.5 背压
+
+- **out 满**：模拟器置 `backpressure_out=1`，`cpu_loop` 暂停 CPU，直到外部程序 `pop()`。
+- **in 满**：`push_in()` 返回 `false` 并置 `backpressure_in=1`，外部程序应重试。
+- 模拟器侧 `EventStream::full()`/`in_full()` 可查询状态。
+
+### 10.6 全局序号
+
+`push()` 和 `push_in()` 都会从共享内存头的 `seq` 原子取号，因此 out/in 两个方向的事件
+可以直接按 `seq` 排序，不需要额外的关联字段；总线请求/响应仍用 `xfer_id` 配对。
 
 ## 11. 日志
 
@@ -553,17 +631,19 @@ int main() {
 1. **`SharedMemory` 构造函数 `create=true` 会 `memset` + `reset_all`，外部程序必须 `create=false`，否则重置模拟器状态；**
 2. **`dump_shm` 已用 `create=false`，外部程序参考 `tools/dump_shm.cpp`；**
 3. **`atomic` 操作跨进程，外部程序用 `std::atomic` 的 `load`/`store`，或者 `__atomic_load_n`/`__atomic_store_n`；**
-4. **事件流 `head`/`tail` 是 `uint64_t`，外部程序 `tail` 递增，模拟器 `head` 递增，满时 `backpressure=1`；**
+4. **事件流有 out/in 两个环：外部程序 `pop()` 消费 out、`push_in()` 生产 in；两个环的 `head`/`tail` 都是 `uint64_t`，满时分别置 `backpressure_out`/`backpressure_in`；**
 5. **中断位图 `bm[i] |= (1 << b)`，外部程序写，模拟器 `check_interrupt` 读，`enter_interrupt` 清；**
-6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序读，模拟器 `handle_mmio_write` 写；**
+6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序可写 `value` 注入电平，模拟器端口读会把 `value` 叠加回寄存器；`direction=0` 时输入引脚变化还会触发 GPIO 边沿中断；**
 7. **断点区 `bh->count`/`sorted`/`min_addr`/`max_addr` 写完后，`hit=0`，`Resume`，模拟器 `check_breakpoint` 二分查；**
-8. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点。**
+8. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点；**
+9. **SPI 是同步总线：外部程序 attach 事件流后，模拟器会冻结 CPU 等待 `SpiXfer(ToMcu)` 响应；建议 `start_paused=true`，attach 后先 `Resume`，避免第一次传输用默认 MISO 抢跑；**
+10. **`host_attached` 是粘滞标志，进程退出后不会自动清零；长时间无响应由 `simulator.bus_wait_timeout_ms` 兜底。**
 
 ## 16. 参考
 
 - `include/mcus/shared_memory.h`：`ControlBlock`/`PinState`/`InjectSlot`/`BreakpointHeader`/`BreakpointSlot`/`SharedMemory`；
-- `include/mcus/event_stream.h`：`Header`/`EventStream`；
-- `include/mcus/types.h`：`MmioEvent`/`RegSemantics`/`ControlCommand`/`ControlStatus`；
+- `include/mcus/event_stream.h`：双向 `Header`/`EventStream`；
+- `include/mcus/types.h`：`MmioEvent`/`PinEvent`/`BusEvent`/`UsbEvent`/`RegSemantics`/`ControlCommand`/`ControlStatus`；
 - `tools/dump_shm.cpp`：`dump_shm` 完整实现；
 - `docs/isa.md`：如何编写 ISA；
 - `docs/config.md`：如何编写配置文件。

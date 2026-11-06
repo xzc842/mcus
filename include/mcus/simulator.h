@@ -22,6 +22,7 @@
 #include "cpu.h"
 #include "config.h"
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -61,6 +62,10 @@ private:
     VirtTime acc_clock_ = 0;
     uint32_t clock_step_interval_ = 100;
     std::vector<uint64_t> timer_acc_;
+
+    uint32_t bus_wait_timeout_ms_ = 1000;
+    bool bus_waiting_ = false;
+    std::chrono::steady_clock::time_point bus_wait_start_{};
 };
 
 } // namespace mcus

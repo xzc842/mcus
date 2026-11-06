@@ -29,7 +29,7 @@ void register_all_isas() {
     static bool done = false;
     if (done) return;
     done = true;
-    // 只注册内置的 mcus-minimal；8051 等真实架构由外部 ISA 动态库加载
+    // 只注册内置的 mcus-minimal；真实架构由外部 ISA 动态库加载
 }
 
 void IsaRegistry::register_isa(const std::string& arch, IsaFactory f) {
@@ -90,7 +90,7 @@ public:
         uint8_t op = fetch8(pc++);
         auto space_of = [&](uint8_t id) -> SpaceId {
             if (id < spaces_.size()) return spaces_[id];
-            return "mmio";
+            return SpaceId{};
         };
 
         switch (op) {

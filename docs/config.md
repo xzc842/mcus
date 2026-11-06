@@ -38,6 +38,10 @@ control_poll_interval = 64
 # 100 = 定时器 100 步量化，中断延迟 0–99 步，性能最高
 clock_step_interval = 100
 
+# 外部程序 attach 后，SPI 等同步总线等待响应的真实时间上限（毫秒）
+# 0 = 无限等待；超时后使用默认 MISO(0xFF)
+bus_wait_timeout_ms = 1000
+
 [crystal]
 # 虚拟晶振频率（Hz）。所有虚拟时间以此为基准，不跟真实时间对齐。
 frequency_hz = 16000000
@@ -64,10 +68,11 @@ dump_prefix = "/tmp/mcus_dump"
 |---|---|---|---|
 | `shm_name` | string | `/mcus_shm` | 共享内存名，POSIX `shm_open`，需以 `/` 开头 |
 | `stream_name` | string | `/mcus_stream` | 事件流名，POSIX `shm_open`，需以 `/` 开头 |
-| `stream_capacity` | int | `4096` | 事件流环形队列容量（条数）。满时 `cpu_loop` `yield`，背压暂停 CPU |
+| `stream_capacity` | int | `4096` | out/in 每个环的容量（条数）。out 满时 `cpu_loop` `yield`，背压暂停 CPU；in 满时 `push_in` 返回 false |
 | `start_paused` | bool | `false` | 启动后是否立即暂停，`true` 时 `status=Paused`，等外部程序 `Resume` |
 | `control_poll_interval` | int | `64` | 每 N 步 `handle_control_commands`，降低 CPU 空转 |
 | `clock_step_interval` | int | `100` | 每 N 步 `advance_clock`，见下文 |
+| `bus_wait_timeout_ms` | int | `1000` | 外部程序 attach 后，SPI 等同步总线等待响应的真实时间上限；0=无限等待 |
 
 **`shm_name`/`stream_name` 必须唯一，多个 `mcus` 实例同时跑时不能冲突。** **`debug.toml` 用 `/mcus_shm_debug`/`/mcus_stream_debug`，和 `example.toml` 的 `/mcus_shm`/`/mcus_stream` 区分。**
 
@@ -156,4 +161,4 @@ Config Config::load_from_file(const std::string& path) {
 - `config/debug.toml`：调试；
 - `include/mcus/config.h`：`SimulatorSection`/`CrystalSection`/`DebugSection`/`Config`；
 - `src/config.cpp`：`load_from_file`/`apply_to_model`；
-- `docs/external_contract.md`：共享内存和事件流契约。
+- `docs/external.md`：共享内存、双向事件流和总线/USB 契约。

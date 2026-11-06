@@ -119,7 +119,7 @@ models/
 | `is_mmio` | bool | 是否 MMIO（寄存器空间） |
 | `addr_mask` | uint32 | 地址掩码，`0` 表示不掩，`1023` 表示 1KB 循环 |
 
-**`is_mmio=true` 的区域，`read8`/`write8` 走 `handle_mmio_read`/`handle_mmio_write`，按 `registers` 的 `semantics` 处理。** **`is_mmio=false` 的区域，直接读 `memory_[space].data[off]`。**
+**`is_mmio=true` 的区域，`read8`/`write8` 走 `handle_mmio_read`/`handle_mmio_write`，按 `registers` 的 `semantics` 处理。** **`is_mmio=false` 的区域，直接读 `memory_[space].data[off]`；`read_only=true` 的区域拒绝 CPU 写（固件加载仍直接写入）。**
 
 **`addr_mask` 用于 `xram` 这种小容量空间，`DPTR` 高 6 位被掩，`addr_mask=1023` 表示 1KB。**
 
@@ -152,8 +152,8 @@ models/
 用模型描述“写 A 后置 B 的某位”这类副作用，核心执行，不需要在 ISA 里写死：
 
 ```json
-{ "name": "SBUF", "space": "sfr", "addr": 153, "width": 8, "semantics": "fifo",
-  "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 152, "bit": 1 } ] }
+{ "name": "CMD", "space": "sfr", "addr": 0xC0, "width": 8, "semantics": "plain",
+  "on_write": [ { "action": "set_bit", "space": "sfr", "addr": 0xC1, "bit": 0 } ] }
 ```
 
 | `action` | 作用 |
@@ -163,7 +163,9 @@ models/
 | `set_value` | 目标寄存器写 `value` |
 | `clear_value` | 目标寄存器写 0 |
 
-动作由 `Cpu` 在读写后直接写共享内存，不会再次触发引脚/事件/动作，适合中断标志、状态位这类副作用。
+动作由 `Cpu` 在读写后直接写共享内存，不会再次触发引脚/事件/动作，适合状态位这类副作用。
+
+**UART/SPI/USB 不要用 `on_write` 模拟收发时序**：它们由 `uarts`/`spis`/`usb` 段描述，写数据寄存器会发总线事件，标志由虚拟时间推进后置位。
 
 ### `semantics` 语义
 
@@ -212,7 +214,7 @@ models/
 
 **`source_space`/`source_reg`/`source_bit` 用于寄存器位到引脚表的同步。** **`P1` 写 `0xFE`，`P1.0` 的 `source_bit=0`，引脚表 `P1.0` 的 `value=0`。**
 
-**`direction_*` 可选：写方向寄存器时同步更新 `PinState.direction`，核心不假设方向寄存器叫什么。**
+**`direction_*` 可选：写方向寄存器时同步更新 `PinState.direction`，核心不假设方向寄存器叫什么。复位时 `PinState.value/direction` 会从 `source_reg`/`direction_reg` 的复位值同步，不再一律置 0。**
 
 ## 7. `interrupts`：中断
 
@@ -229,7 +231,7 @@ models/
 |---|---|---|
 | `name` | string | 中断名 |
 | `number` | uint32 | 中断号，`interrupt(N)` 用 |
-| `priority` | uint32 | 优先级，数值越小越优先；默认等于 `number` |
+| `priority` | uint32 | 优先级，数值越小越优先；默认 `0`（同一优先级不能嵌套） |
 | `vector_addr` | uint32 | 向量地址 |
 | `vector_space` | string | 向量空间 |
 | `enable_reg` | uint32 | 使能寄存器地址 |
@@ -240,7 +242,7 @@ models/
 | `pending_bit` | uint8 | 挂起位 |
 | `clear_pending` | bool | 进中断时是否清挂起位，默认 `true` |
 
-**`clear_pending=false` 用于 `UART0`/`UART1`/`SPI0`，`TI`/`TI1`/`SPIF` 由 `isr` 的 `jbc`/`jnb` 清，`enter_interrupt` 不清。**
+**`clear_pending=false` 用于 UART/SPI/ADC/TKEY/PWM/GPIO/USB 这类“标志由软件清”的中断源。`enter_interrupt` 不清标志，但 `Cpu` 会记录中断服务状态，同号/同级中断在 `RETI` 前不会重入，因此不会出现中断风暴。**
 
 ## 8. `timers`：定时器
 
@@ -293,7 +295,108 @@ models/
 
 **`WDOG` 的 `counter.up=false`，递减，`enable`/`overflow` 是 `CLOCK_CFG` bit5，`overflow_action: "reset"`。**
 
-## 9. 编写步骤
+## 9. 外设：`uarts` / `spis` / `pwms` / `adcs` / `tkeys` / `gpio_irq` / `usb`
+
+外设的驱动逻辑在 `Cpu` 里，但**寄存器、引脚、时序全部由模型描述**。`Cpu` 只按这些描述生成事件、置标志和驱动引脚。
+
+### 9.1 `uarts`
+
+```json
+"uarts": [
+  { "name": "UART0", "irq": 4, "space": "sfr", "ctrl": 152, "data": 153,
+    "tx_flag_bit": 1, "rx_flag_bit": 0, "tx_cycles": 64, "rx_fifo": 8 }
+]
+```
+
+| 字段 | 说明 |
+|---|---|
+| `ctrl` | 状态/控制寄存器，发送/接收标志所在 |
+| `data` | 数据寄存器 |
+| `tx_flag_bit` / `rx_flag_bit` | 发送完成/接收标志位 |
+| `tx_cycles` | 一个字节的虚拟发送时间；0=立即置 TI |
+| `rx_fifo` | 接收 FIFO 深度 |
+
+写 `data` 会发 `BusEvent(UartTx)`；外部 `push_in(BusEvent(UartRx))` 会写入 FIFO、置接收标志。读 `data` 会取走 FIFO 数据并在 FIFO 空时清接收标志。旧字段名 `scon`/`sbuf`/`ti_bit`/`ri_bit` 仍作为别名兼容。
+
+### 9.2 `spis`
+
+```json
+"spis": [
+  { "name": "SPI0", "irq": 6, "space": "sfr", "data": 249, "stat": 248,
+    "ctrl": 250, "done_bit": 4, "busy_bit": 7, "xfer_cycles": 8 }
+]
+```
+
+写 `data` 发 `BusEvent(SpiXfer, ToHost)`；外部在 `xfer_cycles` 内回 `SpiXfer(ToMcu, xfer_id)`，模拟器把 MISO 写回 `data` 并置 `done_bit`。没有外部响应时 MISO 默认 `0xFF`。
+
+### 9.3 `pwms`
+
+```json
+"pwms": [
+  { "name": "PWM", "irq": 11, "ctrl": 157, "data1": 156, "data2": 155,
+    "ck_se": 158, "if_bit": 4, "enable_bit1": 0, "enable_bit2": 1,
+    "period": 256, "prescaler": 1,
+    "pins": [
+      { "channel": 1, "pin": "P1.5", "function": "pwm1" },
+      { "channel": 2, "pin": "P3.1", "function": "pwm2" }
+    ] }
+]
+```
+
+`period` 是计数器周期（按 `prescaler` 分频后的 tick），`pins[].pin` 是 `pins` 里的名字。PWM 运行时会把引脚方向置为输出、函数切到 `pins[].function` 指定的名字（由模型提供，不硬编码 `pwm1`/`pwm2`），并按占空比更新 `PinState.value`。
+
+### 9.4 `adcs`
+
+```json
+"adcs": [
+  { "name": "ADC", "irq": 9, "space": "sfr", "ctrl": 128, "cfg": 154,
+    "data": 159, "start_bit": 0, "if_bit": 5, "busy_bit": 4,
+    "conversion_cycles": 96, "channel_mask": 15, "channel_shift": 0,
+    "channels": [ { "channel": 0, "pin": "P1.1" } ] }
+]
+```
+
+写 `ctrl.start_bit=1` 启动转换；`conversion_cycles` 后按 `(cfg >> channel_shift) & channel_mask` 选通道，采样对应 `PinState.value`（外部程序写入的模拟量），按 `data` 寄存器宽度截断后写入并置 `if_bit`。
+
+### 9.5 `tkeys`
+
+```json
+"tkeys": [
+  { "name": "TKEY", "irq": 7, "space": "sfr", "ctrl": 195, "datl": 196,
+    "dath": 197, "start_bit": 0, "if_bit": 7, "scan_cycles": 256,
+    "data_bits": 16, "channels": ["P1.0", "P1.1", "P1.4", "P3.2"] }
+]
+```
+
+写 `ctrl.start_bit=1` 启动扫描；`scan_cycles` 后把各通道引脚电平拼成 `data_bits` 位写入 `datl`/`dath`，并置 `if_bit`。
+
+### 9.6 `gpio_irq`
+
+```json
+"gpio_irq": {
+  "irq": 12, "enable_reg": 199, "enable_space": "sfr",
+  "enable_bit_base": 0, "enable_bits": 8
+}
+```
+
+外部程序改 `PinState.value` 时，模拟器在指令边界检测输入引脚边沿；对应 `GPIO_IE` 位为 1 时置 `GPIO` 中断挂起位。`enable_bit` 取 `(pin.number - enable_bit_base) % enable_bits`。
+
+**方向约定：`direction=0` 是输入，`1` 是输出。** 端口读会始终把 `PinState.value` 叠加回寄存器，因此外部程序注入电平不依赖方向位；方向位主要用于 GPIO 边沿中断和对外描述。CH552 的 `P1_DIR_PU`/`P3_DIR_PU` 复位值是 `0xFF`（输出），GPIO 中断只在输入方向下触发。
+
+### 9.7 `usb`
+
+```json
+"usb": {
+  "irq": 8, "space": "sfr", "int_fg": 216, "int_st": 217, "mis_st": 218, "rx_len": 219,
+  "int_en": 225, "ctrl": 226, "dev_ad": 227, "int_fg_bit": 1,
+  "buffer_space": "xram", "buffer_base": 704, "buffer_stride": 64,
+  "endpoints": [ { "index": 0, "ctrl": 220, "max_packet": 64 } ]
+}
+```
+
+USB 数据包走 `DebugEventType::Usb`，端点缓冲放在 `buffer_space:buffer_base + index*buffer_stride`。外部主机通过 `UsbToken::Setup/Out/In/Reset` 与模拟器交互；固件写 `UEPn_CTRL` 时模拟器发 `EpReady`。
+
+## 10. 编写步骤
 
 ### 1. 确定芯片架构
 
@@ -338,7 +441,7 @@ ctest --test-dir build --output-on-failure
 
 **`mcus` 启动时 `Model::validate()` 检查：区域不重叠、复位向量和初始 SP 在合法空间、寄存器宽度合法、同地址多语义有 alias、引脚编号唯一、中断向量和使能/挂起寄存器已定义、定时器寄存器已定义。**
 
-## 10. 示例：最小模型
+## 11. 示例：最小模型
 
 `models/dummy.json`：
 
@@ -390,19 +493,19 @@ ctest --test-dir build --output-on-failure
 
 **`dummy.json` 是最小可运行模型，验证框架闭环和 `test_cpu_minimal`/`test_timer`。**
 
-## 11. 常见问题
+## 12. 常见问题
 
 ### `P1` 读 `0xFF`，`CPL` 不翻
 
 **`P1` 的 `semantics` 必须是 `write_trigger`，`handle_mmio_read` 对 `write_trigger` 读 `shm_`，不是 `reset_value`。**
 
-### `SBUF` 写不置 `TI`
+### `SBUF` 写后 `TI` 不置或延迟
 
-**`SBUF` 的 `semantics` 是 `fifo`，`handle_mmio_write` 的 `fifo` 分支要加 `SBUF` 写置 `TI` 的代码，`ch552g.json` 没写，`cpu.cpp` 硬编码。**
+**`uarts[].tx_cycles` 控制发送时间。写 `SBUF` 先发 `UartTx` 事件，`tx_cycles` 个虚拟周期后才置 `TI`；如果 `tx_cycles=0` 则立即置。不要再给 `SBUF` 配 `on_write: set_bit(TI)`，否则会绕过事件和时序。**
 
 ### `UART0`/`UART1`/`SPI0` 中断进了但 `jbc`/`jnb` 读到 0
 
-**`clear_pending=false`，`enter_interrupt` 不清 `TI`/`TI1`/`SPIF`，`isr` 的 `jbc`/`jnb` 读到 1。**
+**这些中断的 `clear_pending` 必须是 `false`：标志应由 ISR 自己清。`Cpu` 现在会屏蔽服务中的同号/同级中断，不会再出现“中断重入导致 ISR 不执行、SP 暴涨”的问题。**
 
 ### `WDOG` 不溢出复位
 
@@ -412,7 +515,7 @@ ctest --test-dir build --output-on-failure
 
 **`Cpu`/`Simulator` 不含芯片硬编码，换芯片只换 `models/*.json` 和 `isa_*.cpp`。** **`arch_desc` 驱动 `fast_spaces`/`global_irq_enable`/`irq_push_bytes`/`sp_reg`/`reset_space`。**
 
-## 12. 参考
+## 13. 参考
 
 - `models/ch552g.json`：完整 CH552G 模型；
 - `models/dummy.json`：最小模型；

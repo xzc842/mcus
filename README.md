@@ -5,10 +5,10 @@
 ## 核心设计原则
 
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
-- **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述，核心不写死具体芯片。
+- **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器/外设结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
 - **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 是外部库。
 - **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
-- **统一调试事件流**：MMIO / GPIO / 总线 / 中断都进入同一条 `DebugEvent` 流，带全局 `seq`，保证顺序；支持 attach 模式，不重置队列。
+- **统一双向事件流**：MMIO / GPIO / 总线 / 中断 / USB 都进入同一个 `DebugEvent` 共享内存对象，带全局 `seq`，保证顺序；out 环给外部程序消费，in 环把总线响应/UART RX/USB 包送回模拟器；支持 attach 模式，不重置队列。
 - **GPIO 事件化**：引脚只在状态变化时发 PIN 事件，外部程序/插件不轮询引脚；当前值仍可通过 `PinState` 读取。
 - **流满背压暂停**：事件流满时 CPU 线程暂停推进，避免丢事件导致行为不一致。
 - **复位由 RST 引脚触发**：外部程序写 `reset_pin`，模拟器在指令边界检测并执行复位序列。
@@ -16,6 +16,7 @@
 ## 功能列表
 
 ### CH552G(8051) 
+
 已验证：
 
 | 功能 | 测试 | 结果 |
@@ -29,25 +30,38 @@
 | Timer1 中断 | `timer1_test` | ✅ |
 | Timer2 中断 + reload | `timer2_test` | ✅ |
 | 外部中断 INT0 | `int0_test` | ✅ |
-| SPI0 寄存器 | `spi0_test` | ✅ |
-| PWM 寄存器 | `pwm_test` | ✅ |
-| ADC 寄存器 | `adc_test` | ✅ |
-| TKEY 寄存器 | `tkey_test` | ✅ |
+| SPI0 寄存器 + 中断 | `spi0_test` | ✅ |
+| PWM 寄存器 + 中断 + 引脚输出 | `pwm_test` + `test_peripherals` | ✅ |
+| ADC 寄存器 + 转换 + 中断 | `adc_test` + `test_peripherals` | ✅ |
+| TKEY 寄存器 + 扫描 + 中断 | `tkey_test` + `test_peripherals` | ✅ |
 | WDOG 寄存器 | `wdog_test` | ✅ |
 | WDOG 溢出复位 | `wdog_test` | ✅ |
-| USB 寄存器 | `usb_test` | ✅ |
+| USB 寄存器 + 包事件 | `usb_test` + `test_peripherals` | ✅ |
+| UART0 发送/接收 + TI/RI 中断 | `uart_test` + `test_peripherals` | ✅ |
+| UART1 发送/接收 + TI1/RI1 中断 | `uart1_test` + `test_peripherals` | ✅ |
+| GPIO 输入采样 + 边沿中断 | `test_peripherals` | ✅ |
 
-部分验证：
 
-| 功能 | 测试 | 状态 |
-|---|---|---|
-| UART0 | `uart_test` | SCON/SBUF 寄存器通，TI 中断/P1 采样待查 |
-| UART1 | `uart1_test` | SCON1/SBUF1/SBAUD1 寄存器通，TI1 中断待查 |
-| SPI0 中断 | `spi0_test` | SPI0_DATA/CTRL 寄存器通，SPIF 中断/jnb acc.4 待查 |
+### 总线与 USB 的收发模型
 
-未实现：
+所有总线都不在核心里实现协议栈，统一走 `DebugEvent` 事件流：
 
-PWM/ADC/TKEY/GPIO 中断（需要 advance_clock 或 handle_mmio_write 置挂起位）、USB 协议层。
+- **out 环**：模拟器 → 外部程序（MMIO、Pin、Bus 请求、Irq、USB 事件）。
+- **in 环**：外部程序 → 模拟器（UART RX、SPI MISO、USB SETUP/IN/OUT、注入）。
+- 两个环共用一个全局 `seq`，见 [include/mcus/types.h](include/mcus/types.h) 和 [include/mcus/event_stream.h](include/mcus/event_stream.h)。
+- 外部程序建议先 attach 事件流并 `Resume`，再让固件运行（`start_paused=true`）；SPI 在外部程序 attach 后会冻结 CPU 等待 MISO 响应，超时由 `bus_wait_timeout_ms` 控制。
+
+UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)。
+
+### 通用性
+
+核心不包含 CH552/8051 的分支：空间名、寄存器地址、外设寄存器/位、引脚映射、中断向量、栈方向全部来自模型；架构差异由外部 ISA 动态库提供。仓库里的 `models/generic.json` 使用 `flash`/`ram`/`periph` 空间名和 `mcus-minimal` ISA，`tests/test_generic_model.cpp` 作为“换架构只换 ISA + 模型”的回归测试。
+
+### 仍需外部设备模型的部分
+
+- UART/SPI 只有“寄存器 + 事件”的主机侧，真实对端（串口设备、SPI 从机）由外部程序通过 `push_in()` 模拟。
+- USB 已实现端点缓冲、SETUP/IN/OUT 包事件和 USB 中断；但 CH552 的 USB DMA/T_LEN 等 xSFR 尚未建模，端点缓冲固定映射在模型 `usb.buffer_base` 指定的 xRAM 区域。
+- I2C 的 `BusEventKind` 已预留，但 CH552G 模型没有 I2C 外设，暂未启用。
 
 
 ## 构建与运行

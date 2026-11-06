@@ -7,10 +7,11 @@
 核心设计原则：
 
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
-- **芯片差异在模型文件**：地址空间、寄存器语义、定时器结构、引脚复用、中断向量全部由 `models/*.json` 描述，核心不写死具体芯片。
+- **芯片差异在模型文件**：地址空间、寄存器语义、定时器/外设结构、引脚复用、中断向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
 - **指令集可插拔**：按模型文件的 `arch` 字段加载 ISA 模块，当前有 `mcus-minimal` 和 `8051` 两个 ISA。
-- **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
-- **流满背压暂停**：事件流满时 CPU 线程暂停推进，避免丢事件导致行为不一致。
+- **外部程序不在本项目内**：外设模型通过共享内存和双向事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
+- **总线事件化**：UART/SPI/USB 的收发都走 `BusEvent`/`UsbEvent`；SPI 等同步总线在外部程序 attach 后冻结 CPU 等待响应。
+- **流满背压暂停**：事件流 out 满时 CPU 线程暂停推进；in 满时外部 `push_in` 返回失败。
 - **复位由 RST 引脚触发**：外部程序写 `reset_pin`，模拟器在指令边界检测并执行复位序列。
 
 ## 2. 目录结构
@@ -25,6 +26,7 @@ mcus/
 ├── models/
 │   ├── dummy.json
 │   ├── ch552g.json
+│   ├── generic.json
 │   └── schema.md
 ├── include/mcus/
 │   ├── types.h
@@ -35,6 +37,9 @@ mcus/
 │   ├── simulator.h
 │   ├── config.h
 │   ├── instruction.h
+│   ├── firmware.h
+│   ├── isa_plugin.h
+│   ├── json.h
 │   └── log.h
 ├── src/
 │   ├── model.cpp
@@ -43,15 +48,24 @@ mcus/
 │   ├── cpu.cpp
 │   ├── simulator.cpp
 │   ├── config.cpp
+│   ├── firmware.cpp
+│   ├── json.cpp
+│   ├── isa_base.cpp
 │   ├── isa_registry.cpp
 │   ├── isa_8051.cpp
+│   ├── main.cpp
 │   └── log.cpp
 ├── tests/
 │   ├── CMakeLists.txt
 │   ├── test_event_stream.cpp
 │   ├── test_shared_memory.cpp
 │   ├── test_cpu_minimal.cpp
+│   ├── test_interrupt.cpp
+│   ├── test_peripherals.cpp
+│   ├── test_generic_model.cpp
 │   ├── test_timer.cpp
+│   ├── test_breakpoint.cpp
+│   ├── test_firmware.cpp
 │   └── test_ch552g.cpp
 └── tools/
     └── dump_shm.cpp
@@ -98,7 +112,8 @@ ctest --test-dir build --output-on-failure
 
 - `simulator.shm_name`：共享内存名，默认 `/mcus_shm`。
 - `simulator.stream_name`：事件流名，默认 `/mcus_stream`。
-- `simulator.stream_capacity`：事件流容量，默认 4096。
+- `simulator.stream_capacity`：out/in 每个事件环的容量，默认 4096。
+- `simulator.bus_wait_timeout_ms`：外部程序 attach 后，同步总线等待响应的真实时间上限，默认 1000ms。
 - `simulator.start_paused`：启动后是否立即暂停。
 - `crystal.frequency_hz`：虚拟晶振频率。
 - `crystal.cycles_per_instruction`：每条指令粗略虚拟耗时。
@@ -126,14 +141,15 @@ WCH CH552G 模型：
 - 同地址多语义：`SAFE_MOD`/`CHIP_ID` 通过 `read_alias`/`write_alias` 互指；`ROM_CTRL`/`ROM_STATUS` 同理。
 - 中断：14 个中断源，向量地址与手册一致。
 - 定时器：Timer0/1 为 16 位，`overflow_action: "isa"`；Timer2 为 16 位自动重载，`overflow_action: "reload"`。
-- 引脚：P1.0–P1.7、P3.0–P3.7、RST，`source_reg` 指向对应端口 SFR，用于寄存器位到引脚表的同步。
+- 引脚：P1.0–P1.7、P3.0–P3.7、RST，`source_reg` 指向对应端口 SFR，`direction_reg` 指向 `P1_DIR_PU`/`P3_DIR_PU`。
+- 外设：`uarts`（UART0/UART1）、`spis`（SPI0）、`pwms`、`adcs`、`tkeys`、`gpio_irq`、`usb`，寄存器/引脚/时序全部由模型描述。
 - ISA 扩展：`wch_dptr1_movx`，启用 0xA5 扩展指令。
 
 ## 5. 头文件
 
 ### `include/mcus/types.h`
 
-基础类型：`VirtTime`（虚拟时间，晶振周期数）、`Addr`（32 位地址）、`SpaceId`（地址空间名）、`MmioEvent`（事件流记录，纯 POD，不含 `std::string`）、`RegSemantics`、`ControlCommand`、`ControlStatus`。
+基础类型：`VirtTime`（虚拟时间，晶振周期数）、`Addr`（32 位地址）、`SpaceId`（地址空间名）、`DebugEvent`（纯 POD 事件，含 `MmioEvent`/`PinEvent`/`BusEvent`/`IrqEvent`/`UsbEvent`）、`RegSemantics`、`ControlCommand`、`ControlStatus`。
 
 ### `include/mcus/model.h`
 
@@ -144,7 +160,8 @@ WCH CH552G 模型：
 - `PinDesc`：引脚名、编号、复用功能、复位功能、`source_space`/`source_reg`/`source_bit`。
 - `InterruptDesc`：中断号、向量地址、使能/挂起寄存器与位。
 - `CounterDesc`/`TimerDesc`：计数器结构、使能/溢出位、中断号、溢出行为。
-- `Model`：聚合以上，提供 `load_from_file`、`validate`、`find_region`、`find_register`、`find_register_by_name`、`find_interrupt`、`resolve_bit_addr`、`space_index`。
+- `UartDesc`/`SpiDesc`/`PwmDesc`/`AdcDesc`/`TkeyDesc`/`GpioIrqDesc`/`UsbDesc`：总线、定时外设、GPIO 边沿中断和 USB 端点描述。
+- `Model`：聚合以上，提供 `load_from_file`、`validate`、`find_region`、`find_register`、`find_register_by_name`、`find_interrupt`、`space_index`。
 
 ### `include/mcus/shared_memory.h`
 
@@ -157,7 +174,7 @@ WCH CH552G 模型：
 
 ### `include/mcus/event_stream.h`
 
-环形队列 + 背压标志。`push` 满时返回 false 并置背压，`pop` 空时返回 false。外部程序通过同一个共享内存对象消费事件。
+同一个共享内存对象内 out/in 两个 SPSC 环 + 全局 `seq` + 双向背压标志。模拟器 `push`/`pop_in`，外部程序 `pop`/`push_in`；`host_attached` 供同步总线判断是否需要等待外部响应。
 
 ### `include/mcus/instruction.h`
 
@@ -173,12 +190,12 @@ WCH CH552G 模型：
 CPU 状态与执行：
 
 - `CpuRegisters`：通用寄存器、PC、SP、flags。
-- `Cpu`：继承 `MemoryBus`，持有 ISA 实例、内存块、暂停/停机标志、中断嵌套栈。
-- 方法：`step`、`load_firmware`、`reset`、`export_memory`、`read8/16/32`、`write8/16/32`、`handle_mmio_write/read`、`check_interrupt`、`enter_interrupt`、`on_reti`、`check_reset_pin`、`check_inject_slots`。
+- `Cpu`：继承 `MemoryBus`，持有 ISA 实例、内存块、暂停/停机标志、中断服务栈、外设运行时状态。
+- 方法：`step`、`advance_peripherals`、`load_firmware`、`reset`、`export_memory`、`read8/16/32`、`write8/16/32`、`handle_mmio_write/read`、`check_interrupt`、`enter_interrupt`、`on_reti`、`check_reset_pin`、`check_inject_slots`、`poll_bus_in`、`poll_external_pins`、`waiting_for_bus`、`force_complete_spi`。
 
 ### `include/mcus/simulator.h`
 
-`SimulatorConfig` 和 `Simulator`：持有模型、固件、配置、共享内存、事件流、CPU；提供 `run`、`stop`；内部 `cpu_loop` 和 `clock_loop`，处理控制区命令、背压暂停、虚拟时间推进、定时器推进、dump、复位。
+`SimulatorConfig` 和 `Simulator`：持有模型、固件、配置、共享内存、事件流、CPU；提供 `run`、`stop`；内部 `cpu_loop` 和 `clock_loop`，处理控制区命令、事件流背压、同步总线等待/超时、虚拟时间推进、定时器/外设推进、dump、复位。
 
 ### `include/mcus/config.h`
 
@@ -192,15 +209,15 @@ TOML 配置结构：`SimulatorSection`、`CrystalSection`、`DebugSection`、`Co
 
 ### `src/model.cpp`
 
-解析 JSON 模型文件，填充 `Model`，建立寄存器地址索引和空间顺序，执行校验：区域不重叠、复位向量和初始 SP 在合法空间、寄存器宽度合法、同地址多语义必须通过别名互指、引脚编号唯一、中断向量和使能/挂起寄存器已定义、定时器寄存器已定义。
+解析 JSON 模型文件，填充 `Model`，建立寄存器地址索引和空间顺序，执行校验：区域不重叠、复位向量和初始 SP 在合法空间、寄存器宽度合法、同地址多语义必须通过别名互指、引脚编号唯一、中断向量和使能/挂起寄存器已定义、定时器寄存器已定义、外设寄存器/IRQ/引脚映射合法、USB 端点缓冲不越界。
 
 ### `src/shared_memory.cpp`
 
-创建/映射 POSIX 共享内存，按模型计算控制区、MMIO 区、引脚表、中断位图、注入区、dump 区偏移；提供按空间和地址读写 MMIO 寄存器；`reset_all` 恢复复位值、引脚复位功能、清中断位图和注入区；`export_mmio` 按寄存器顺序导出 MMIO 字节。
+创建/映射 POSIX 共享内存，按模型计算控制区、MMIO 区、引脚表、中断位图、注入区、dump 区、断点区偏移；提供按空间和地址读写 MMIO 寄存器；`reset_all` 恢复寄存器复位值、从端口/方向寄存器同步引脚初值、清中断位图和注入区；`export_mmio` 按寄存器顺序导出 MMIO 字节。
 
 ### `src/event_stream.cpp`
 
-创建/映射事件流共享内存，环形队列头尾原子指针、容量、背压标志；`push` 满时置背压返回 false，`pop` 空时返回 false。
+创建/映射事件流共享内存，out/in 两个 SPSC 环的头尾原子指针、容量、全局 seq、双向背压标志；`push`/`pop` 走 out，`push_in`/`pop_in` 走 in；attach 时置 `host_attached`。
 
 ### `src/cpu.cpp`
 
@@ -211,20 +228,23 @@ CPU 核心：
 - `load_firmware` 将固件拷贝到复位向量所在区域。
 - `reset` 恢复寄存器、清中断栈、复位共享内存。
 - `read8/16/32`、`write8/16/32` 按空间分发，MMIO 走 `handle_mmio_*`，普通内存直接读写。
-- `handle_mmio_write` 按别名选语义，处理写 1 清零，更新引脚表，按 `WriteTrigger`/`Fifo` 推事件。
-- `handle_mmio_read` 按别名选语义，只写寄存器返回复位值，读清零后清零。
+- `handle_mmio_write` 按别名选语义，处理写 1 清零，更新引脚表，按 `WriteTrigger`/`Fifo` 推事件，并调用外设侧效应。
+- `handle_mmio_read` 按别名选语义，端口读叠加 `PinState.value`，读清零后清零，并调用外设读侧效应。
+- `advance_peripherals`：推进 UART 发送、SPI 完成、PWM 计数/引脚、ADC 转换、TKEY 扫描。
+- `poll_bus_in`：消费 in 环的 UART RX、SPI MISO、USB SETUP/IN/OUT/Reset。
+- `poll_external_pins`：检测外部 `PinState` 变化，发 Pin 事件并触发 GPIO 边沿中断。
 - `check_inject_slots` 消费注入区。
-- `check_interrupt` 检查挂起位和中断位图，进入中断。
-- `enter_interrupt` 保存 IP 到中断栈，压 PC，清挂起位和位图，跳向量。
-- `on_reti` 恢复 IP。
+- `check_interrupt` 检查挂起位和中断位图；同号/同级中断在服务期间屏蔽，避免中断风暴。
+- `enter_interrupt` 保存上下文、压 PC、按 `clear_pending` 清挂起位、跳向量，并记录服务状态。
+- `on_reti` 恢复上下文并弹出中断服务状态。
 - `check_reset_pin` 检测复位引脚并执行复位。
-- `step` 依次检查停机、暂停、复位、注入、中断，然后执行一条指令，更新控制区 PC 和停机状态。
+- `step` 依次检查停机、暂停、复位、总线入站、外部引脚、注入、断点、中断，然后执行一条指令；SPI 等待外部响应时返回 0 冻结时间。
 
 ### `src/simulator.cpp`
 
 模拟器主循环：
 
-- `cpu_loop`：处理控制区命令、检查暂停和背压、执行 `cpu_.step`、累加虚拟时间、推进定时器。
+- `cpu_loop`：处理控制区命令、检查暂停/背压/同步总线等待、执行 `cpu_.step`、推进外设与虚拟时间、推进定时器；总线等待超时后强制完成。
 - `clock_loop`：周期性诊断，停机后退出。
 - `handle_control_commands`：暂停、继续、单步、dump、复位。
 - `do_dump`：导出普通内存或 MMIO 到 dump 缓冲区，可选落文件。
@@ -232,7 +252,7 @@ CPU 核心：
 
 ### `src/config.cpp`
 
-解析 TOML 配置，填默认值，`apply_to_model` 用配置覆盖模型晶振频率和每指令周期数。
+解析 TOML 配置，填默认值（含 `stream_capacity`、`bus_wait_timeout_ms` 等），`apply_to_model` 用配置覆盖模型晶振频率和每指令周期数。
 
 ### `src/isa_registry.cpp`
 
@@ -256,7 +276,7 @@ CPU 核心：
 
 ### `tests/test_event_stream.cpp`
 
-验证环形队列 push/pop、满/空、背压标志。
+验证 out/in 双环 push/pop、push_in/pop_in、满/空、双向背压标志、attach。
 
 ### `tests/test_shared_memory.cpp`
 
@@ -265,6 +285,18 @@ CPU 核心：
 ### `tests/test_cpu_minimal.cpp`
 
 加载 dummy 模型和手写固件，验证 MMIO 写事件、中断进入、复位。
+
+### `tests/test_generic_model.cpp`
+
+使用 `flash`/`ram`/`periph` 这类非 8051 空间名和 `mcus-minimal` ISA，验证核心没有硬编码空间名，换架构只换 ISA 和模型。
+
+### `tests/test_interrupt.cpp`
+
+验证 `clear_pending=false` 中断不会重入：进入 ISR 后 SP 只压一次，第二步执行向量处指令。
+
+### `tests/test_peripherals.cpp`
+
+用 CH552G 模型验证 UART0/UART1 收发与 TI/RI、SPI0 请求/响应、ADC 转换、TKEY 扫描、PWM 波形/中断、GPIO 输入采样/边沿中断、USB IN/OUT 包事件。
 
 ### `tests/test_timer.cpp`
 
@@ -284,39 +316,27 @@ CPU 核心：
 
 外部程序不属于本项目，通过共享内存和事件流与模拟器交互：
 
-- **共享内存布局**：控制区 → MMIO 寄存器区 → 引脚表 → 中断位图 → 注入区头 → 注入区槽 → dump 缓冲区。
-- **事件流**：Header（head/tail/capacity/backpressure）+ `MmioEvent` 数组。模拟器 push，外部程序 pop。
+- **共享内存布局**：控制区 → MMIO 寄存器区 → 引脚表 → 中断位图 → 注入区头 → 注入区槽 → dump 缓冲区 → 断点区。
+- **事件流**：同一个共享内存对象内 out/in 两个 SPSC 环，元素为 `DebugEvent`（Mmio/Pin/Bus/Irq/Usb），共用一个全局 `seq`。模拟器 `push`/`pop_in`，外部程序 `pop`/`push_in`。
 - **控制区命令**：Pause、Resume、Step、Dump、Reset。
 - **中断注入**：外部程序写挂起寄存器位、中断位图，或往注入区写 `InjectSlot`。
-- **引脚**：外部程序读写 `PinState` 的 function/value/direction。
+- **引脚**：外部程序读写 `PinState` 的 function/value/direction；输入引脚变化会被模拟器在指令边界采样，产生 Pin 事件和 GPIO 边沿中断。
+- **总线**：UART/SPI/USB 全部通过 `BusEvent`/`UsbEvent` 收发，详细约定见 `docs/external.md`。
 
-## 10. 当前遗留问题
+## 10. 当前限制
 
-### 10.1 `blink.bin` 的 `RET` 弹出错误地址
+### 10.1 CH552 USB 的 xSFR 未建模
 
-**现象**：用 SDCC 编译的 CH552G 闪灯固件 `blink.bin` 加载后，`pc` 在 `0x00AC` 到 `0x00AD` 之间执行 `delay()` 的 `DJNZ R6`，然后跳到 `0x13195` 或 `0x1491B` 等远超固件范围的地址，`P1` 一直是 `0xFF`。
+`ch552g.json` 已建模 USB 控制/中断寄存器和 5 个端点，端点缓冲固定映射在 `xram:0x2C0`（`usb.buffer_base`），每个端点 64 字节。CH552 的 `UEPn_DMA`/`UEPn_T_LEN` 等 xSFR 尚未加入模型，因此真实固件如果依赖这些寄存器设置缓冲地址/发送长度，需要后续补模型。
 
-**已排查**：
+### 10.2 日志
 
-- `LCALL` 的 `push` 是 `pc + 3`，`RET` 的 `pop` 是 `hi`、`lo`，`pc = (hi << 8) | lo`，代码正确。
-- `blink.bin` 里有 `MOV SP, #0x07`，`SP` 被设为 `7`。
-- `delay()` 用 `volatile` 变量，SDCC 生成 `MOV R6, #0xC8`、`MOV R7, #0`、`DJNZ R6`、`INC R7`、`CJNE R7, #0xC8`、`JC`、`RET`，不占 `0x08`/`0x09`。
-- `push`/`pop` 日志显示 `push iram[0x49] = 0x206`、`push iram[0x50] = 0x0`，说明 `SP` 是 `0x48`，不是 `7`；且 `push` 的 `v` 日志出现 `0x206`，`uint8_t` 不可能为 `0x206`，日志字符串拼接或 `v` 的类型存在异常。
-
-**待确认**：
-
-1. 为什么 `blink.bin` 的 `MOV SP, #0x07` 没有生效，`SP` 是 `0x48`（`ch552g.json` 的 `initial_sp`）。需要确认 `LCALL` 之前是否执行了 `MOV SP`，或者 `Cpu::reset` 的 `regs_.sp` 被后续操作覆盖。
-2. `push iram[0x49] = 0x206` 的 `0x206` 不是 `uint8_t` 的可能值，需要检查 `push` 日志字符串拼接、`std::to_string` 的参数类型，以及 `push` 的调用方是否传入了非 `uint8_t` 的值。
-3. `RET` 弹出的地址是 `0x00BD` 而不是 `0x00BE`，说明 `iram[0x31]` 或 `iram[0x32]` 在 `push` 和 `pop` 之间被修改。需要定位写 `iram[0x31]`/`iram[0x32]` 的指令或代码路径。
-
-### 10.2 日志与调试代码残留
-
-`src/cpu.cpp`、`src/isa_8051.cpp`、`src/simulator.cpp` 中仍保留部分排查用的 `MCUS_DEBUG` 日志（如 `read8 space=...`、`mem_offset A/B/C`、`push iram...`、`stored virtual_time...`）。在问题解决后需要清理，避免日志刷屏和性能开销。
+排查用日志已基本清理，`src/` 中只剩 `enter interrupt` 一条 `MCUS_DEBUG`。
 
 ### 10.3 外部监控程序偏移依赖
 
-`ch552g_monitor/main.cpp` 里 `kRegisterCount` 硬编码为模型寄存器数量。如果 `ch552g.json` 的 `registers` 数组长度变化，`pins` 偏移会错。后续应改为读模型文件计算偏移，或在共享内存布局中导出偏移描述。
+`ch552g_monitor/main.cpp` 里 `kRegisterCount` 硬编码为模型寄存器数量。当前 `ch552g.json` 仍是 82 个寄存器，但模型增删寄存器后 `pins` 偏移会错。后续应改为读模型文件计算偏移，或在共享内存布局中导出偏移描述。
 
-### 10.4 `Cpu::write8("code", ...)` 的潜在风险
+### 10.4 `Cpu::write8` 对只读内存区域的保护
 
-`Cpu::write8` 允许写 `code` 区，`isa_8051.cpp` 里没有写 `code` 的指令，但若未来扩展指令或外部注入误传 `space == "code"`，会修改固件。建议在 `Cpu::write8` 里对 `code` 区写操作加警告或拒绝。
+已实现：`regions[].read_only=true` 的普通内存区域（CH552 的 `code`）写操作直接拒绝并告警。核心不再按“复位空间名字”判断，换架构只需在模型里标注只读区域。

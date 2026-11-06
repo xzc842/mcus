@@ -77,11 +77,40 @@ struct IrqEvent {
     uint32_t pending;
 };
 
+// USB 事务。数据包内联 64 字节（Full-Speed 最大包长），超过时分片。
+enum class UsbToken : uint8_t {
+    Setup = 0,
+    In = 1,
+    Out = 2,
+    Reset = 3,
+    Suspend = 4,
+    Resume = 5,
+    EpReady = 6,    // 设备固件配置好端点，通知外部主机
+};
+
+enum class UsbHandshake : uint8_t {
+    None = 0,
+    Ack = 1,
+    Nak = 2,
+    Stall = 3,
+};
+
+struct UsbEvent {
+    uint32_t xfer_id;
+    uint16_t len;
+    uint8_t ep;
+    uint8_t token;       // UsbToken
+    uint8_t handshake;   // UsbHandshake
+    uint8_t reserved[3];
+    uint8_t data[64];
+};
+
 enum class DebugEventType : uint8_t {
     Mmio = 0,
     Pin = 1,
     Bus = 2,
     Irq = 3,
+    Usb = 4,
 };
 
 // 统一调试事件：MMIO / GPIO / 总线 / 中断。
@@ -96,6 +125,7 @@ struct DebugEvent {
         PinEvent pin;
         BusEvent bus;
         IrqEvent irq;
+        UsbEvent usb;
     } u;
 };
 

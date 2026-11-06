@@ -29,6 +29,8 @@ struct SimulatorSection {
     bool stay_alive = false;
     uint32_t control_poll_interval = 64;
     uint32_t clock_step_interval = 100;
+    // 同步总线等待外部响应的真实时间上限；0=无限等待。
+    uint32_t bus_wait_timeout_ms = 1000;
 };
 
 struct CrystalSection {

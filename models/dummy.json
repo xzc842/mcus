@@ -14,6 +14,7 @@
   "arch_desc": {
     "global_irq_enable": { "space": "mmio", "reg": 1073741844, "bit": 0, "present": true },
     "irq_push_bytes": 2,
+    "stack_grows_down": true,
     "fast_spaces": ["code", "ram"],
     "reset_space": "code",
     "reset_vector": 0,
