@@ -388,13 +388,38 @@ models/
 ```json
 "usb": {
   "irq": 8, "space": "sfr", "int_fg": 216, "int_st": 217, "mis_st": 218, "rx_len": 219,
-  "int_en": 225, "ctrl": 226, "dev_ad": 227, "int_fg_bit": 1,
-  "buffer_space": "xram", "buffer_base": 704, "buffer_stride": 64,
-  "endpoints": [ { "index": 0, "ctrl": 220, "max_packet": 64 } ]
+  "int_en": 225, "ctrl": 226, "dev_ad": 227,
+  "int_fg_bit": 1,
+  "tog_ok_bit": 6,
+  "bus_reset_bit": 0,
+  "buffer_space": "xram", "buffer_base": 0, "buffer_stride": 64,
+  "endpoints": [
+    { "index": 0, "ctrl": 220, "max_packet": 64, "buffer_offset": 0 },
+    { "index": 1, "ctrl": 210, "max_packet": 64, "buffer_offset": 10 },
+    { "index": 2, "ctrl": 212, "len_reg": 213, "max_packet": 64,
+      "buffer_offset": 20, "tx_buffer_offset": 64 }
+  ]
 }
 ```
 
-USB 数据包走 `DebugEventType::Usb`，端点缓冲放在 `buffer_space:buffer_base + index*buffer_stride`。外部主机通过 `UsbToken::Setup/Out/In/Reset` 与模拟器交互；固件写 `UEPn_CTRL` 时模拟器发 `EpReady`。
+USB 数据包走 `DebugEventType::Usb`。端点缓冲地址：
+
+```text
+buffer_space : buffer_base + endpoint.buffer_offset
+TX 半区     : 再加 endpoint.tx_buffer_offset
+```
+
+没有显式 `buffer_offset` 时，默认使用 `index * buffer_stride`。CH552 的实际布局不是
+等距 stride：EP0=0、EP1=10、EP2=20，EP2 的 TX 半区在 +64，所以必须显式写 offset。
+
+`int_fg_bit` 是 `UIF_TRANSFER`；`tog_ok_bit` 是 `U_TOG_OK`；`bus_reset_bit` 是
+`UIF_BUS_RST`。收包/发包时会置 `UIF_TRANSFER`/`U_TOG_OK`，并清掉遗留的 bus reset。
+
+`len_reg`/`len_space` 指定 TX 长度寄存器。固件写长度后，`UsbToken::In` 按该长度返回实际数据；
+一次 IN 取走后 mcus 会把长度清零，避免 host 反复读到同一 TX 缓冲。没有新长度时 IN 返回 0 字节。
+
+外部主机通过 `UsbToken::Setup/Out/In/Reset` 与模拟器交互；固件写 `UEPn_CTRL` 时模拟器发
+`EpReady`。
 
 ## 10. 编写步骤
 

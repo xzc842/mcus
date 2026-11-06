@@ -225,7 +225,7 @@ int main() {
 
         // ---- USB IN / OUT ----
         for (uint32_t i = 0; i < 4; ++i)
-            cpu.write8("xram", 704 + i, static_cast<uint8_t>(0x10 + i));
+            cpu.write8("xram", i, static_cast<uint8_t>(0x10 + i));
 
         DebugEvent uin{};
         uin.type = DebugEventType::Usb;
@@ -253,8 +253,25 @@ int main() {
         cpu.step();
         assert(cpu.read8("sfr", 0xD8) & 0x02); // USB_INT_FG
         assert(cpu.read8("sfr", 0xDB) == 2);   // RX_LEN
-        assert(cpu.read8("xram", 704) == 0xAA);
-        assert(cpu.read8("xram", 705) == 0xBB);
+        assert(cpu.read8("xram", 0) == 0xAA);
+        assert(cpu.read8("xram", 1) == 0xBB);
+
+        // USB EP2 TX buffer（EP2 buffer + 64）应通过 In 事件返回
+        cpu.write8("xram", 84, 0x0D);
+        cpu.write8("xram", 85, 0x0A);
+        cpu.write8("sfr", 0xD5, 2); // UEP2_T_LEN
+        DebugEvent txin{};
+        txin.type = DebugEventType::Usb;
+        txin.u.usb.token = static_cast<uint8_t>(UsbToken::In);
+        txin.u.usb.ep = 2;
+        txin.u.usb.len = 2;
+        txin.u.usb.xfer_id = 79;
+        assert(stream.push_in(txin));
+        cpu.step();
+        UsbEvent txout{};
+        assert(pop_usb(stream, UsbToken::In, txout));
+        assert(txout.xfer_id == 79 && txout.len == 2);
+        assert(txout.data[0] == 0x0D && txout.data[1] == 0x0A);
 
         std::cout << "test_peripherals passed\n";
     }

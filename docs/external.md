@@ -492,14 +492,32 @@ struct UsbEvent {
 外部主机程序的角色：
 
 - 发 `UsbEvent{token=Reset}`：清空端点缓冲、`USB_DEV_AD`。
-- 发 `token=Setup`、`ep=0`：8 字节 SETUP 包，模拟器写入 EP0 缓冲、置 `USB_INT_FG`。
-- 发 `token=Out`：OUT 数据，模拟器写入端点缓冲、设置 `USB_RX_LEN`、置 `USB_INT_FG`。
-- 发 `token=In`、`len=N`：模拟器从端点缓冲读 N 字节，回一个 `token=In, handshake=Ack` 的
-  `UsbEvent` 到 out 环。
+- 发 `token=Setup`、`ep=0`：8 字节 SETUP 包，模拟器写入 EP0 缓冲、置 `USB_INT_ST` 的
+  SETUP token 和 `USB_INT_FG.UIF_TRANSFER`。
+- 发 `token=Out`：OUT 数据，模拟器写入端点缓冲、设置 `USB_RX_LEN`、置 `USB_INT_ST` 的 OUT
+  token、`UIF_TRANSFER` 和 `U_TOG_OK`。
+- 发 `token=In`、`len=N`：模拟器从端点 TX 区读取实际长度（由 `len_reg` 决定），回一个
+  `token=In, handshake=Ack` 的 `UsbEvent` 到 out 环；取走后 mcus 清零 TX 长度。
+- 没有新 TX 长度时，`token=In` 返回 0 字节，不再重复返回旧缓冲。
 - 模拟器在固件写 `UEPn_CTRL` 时发 `token=EpReady`，外部主机可据此安排 IN/OUT。
 
-端点缓冲位于模型 `usb.buffer_space`/`usb.buffer_base`/`usb.buffer_stride` 指定的内存；
-`ch552g.json` 默认是 `xram:0x2C0`，每个端点 64 字节。
+端点缓冲地址由模型显式描述：
+
+```text
+RX: usb.buffer_space : usb.buffer_base + endpoint.buffer_offset
+TX: 再加 endpoint.tx_buffer_offset
+```
+
+`buffer_offset` 缺省时回退到 `index * buffer_stride`。`ch552g.json` 使用实际固件布局：
+
+```text
+EP0 = xram 0
+EP1 = xram 10
+EP2 = xram 20
+EP2 TX = xram 84
+```
+
+因此不能假设所有端点等距 64 字节。
 
 ### 10.5 背压
 

@@ -211,7 +211,8 @@ struct UsbEndpointDesc {
     uint16_t max_packet = 64;
     Addr len_reg = 0;           // 可选：发送长度寄存器
     SpaceId len_space;
-    uint32_t buffer_offset = 0; // 相对 usb.buffer_base 的偏移
+    uint32_t buffer_offset = 0;    // RX 相对 usb.buffer_base 的偏移
+    uint32_t tx_buffer_offset = 0; // TX 相对 RX 的偏移（CH552 EP2 为 64）
 };
 
 struct UsbDesc {
@@ -226,6 +227,8 @@ struct UsbDesc {
     Addr ctrl = 0;
     Addr dev_ad = 0;
     uint8_t int_fg_bit = 1;
+    uint8_t tog_ok_bit = 6;       // USB_INT_FG 里的 U_TOG_OK 位；0=不处理
+    uint8_t bus_reset_bit = 0;    // USB_INT_FG 里的 UIF_BUS_RST 位
     SpaceId buffer_space;
     Addr buffer_base = 0;
     uint32_t buffer_stride = 64;

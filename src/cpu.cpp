@@ -163,6 +163,7 @@ void Cpu::reset() {
     pwm_rt_.assign(model_.pwms.size(), PwmRuntime{});
     adc_rt_.assign(model_.adcs.size(), AdcRuntime{});
     tkey_rt_.assign(model_.tkeys.size(), TkeyRuntime{});
+    usb_tx_pending_.assign(model_.usb.endpoints.size(), 0);
     shm_.reset_all();
 
     // 架构相关的 PC/SP/寄存器初始化由 ISA 负责
@@ -351,6 +352,15 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
     uint32_t nv = value;
     if (reg->semantics == RegSemantics::WriteOneClear) nv = old & ~value;
     shm_.write_reg(space, addr, nv, width);
+
+    if (model_.usb.present && space == model_.usb.space) {
+        for (size_t i = 0; i < model_.usb.endpoints.size(); ++i) {
+            const auto& ep = model_.usb.endpoints[i];
+            if (ep.len_reg == addr && ep.len_space == space && nv > 0) {
+                if (i < usb_tx_pending_.size()) usb_tx_pending_[i] = 1;
+            }
+        }
+    }
 
     // 模型描述的寄存器副作用（由 on_write 动作描述）
     apply_actions(model_, shm_, reg->on_write);
@@ -559,7 +569,22 @@ uint32_t Cpu::read_reg8(const SpaceId& space, Addr addr) const {
 void Cpu::write_reg8(const SpaceId& space, Addr addr, uint32_t value) {
     const RegisterDesc* rd = model_.find_register(space, addr);
     const uint8_t width = rd ? rd->width : 8;
+
+    if (space == "sfr" && addr == 0xD5) {
+        MCUS_INFO("write UEP2_T_LEN=" + std::to_string(value));
+    }
     shm_.write_reg(space, addr, value, width);
+}
+
+void Cpu::raise_usb_int_fg(uint32_t bits) {
+    if (!model_.usb.present) return;
+    const RegisterDesc* rd = model_.find_register(model_.usb.space,
+                                                   model_.usb.int_fg);
+    const uint8_t width = rd ? rd->width : 8;
+    const uint32_t current =
+        shm_.read_reg(model_.usb.space, model_.usb.int_fg, width);
+    shm_.write_reg(model_.usb.space, model_.usb.int_fg,
+                   current | bits, width);
 }
 
 void Cpu::set_irq_pending(uint32_t number) {
@@ -811,10 +836,20 @@ void Cpu::poll_bus_in() {
                     write_usb_byte(u.ep, i, u.data[i]);
                 write_reg8(model_.usb.space, model_.usb.rx_len, n);
                 uint32_t st = read_reg8(model_.usb.space, model_.usb.int_st);
-                st = (st & ~0xFFu) | u.ep;
+                const uint32_t token_bits =
+                    (token == UsbToken::Setup) ? 0x30u : 0x00u;
+                st = (st & ~0xFFu) | (u.ep & 0x0Fu) | token_bits;
                 write_reg8(model_.usb.space, model_.usb.int_st, st);
                 uint32_t fg = read_reg8(model_.usb.space, model_.usb.int_fg);
                 fg |= (1u << model_.usb.int_fg_bit);
+                /* CH552 的 CDC_EP2_OUT 会检查 U_TOG_OK；建模为收包时置位。 */
+                if (model_.usb.tog_ok_bit > 0 && model_.usb.tog_ok_bit < 8) {
+                    fg |= (1u << model_.usb.tog_ok_bit);
+                }
+                /* 处理一次数据包时清掉上电遗留的 BUS_RST，避免固件重复 reset。 */
+                if (model_.usb.bus_reset_bit < 8) {
+                    fg &= ~(1u << model_.usb.bus_reset_bit);
+                }
                 write_reg8(model_.usb.space, model_.usb.int_fg, fg);
             } else if (token == UsbToken::In) {
                 if (ep_idx >= ep_count) {
@@ -833,11 +868,26 @@ void Cpu::poll_bus_in() {
                 uint8_t data[64]{};
                 for (uint16_t i = 0; i < req; ++i)
                     data[i] = static_cast<uint8_t>(read_usb_byte(u.ep, i));
+                if (u.ep == 2) MCUS_INFO("IN2 x84=" + std::to_string(read8("xram",84)) +
+                    " d0=" + std::to_string(data[0]) + " req=" + std::to_string(req));
                 emit_usb_event(u.xfer_id, UsbToken::In, u.ep,
                                UsbHandshake::Ack, data, req);
+                if (ed.len_reg != 0) {
+                    shm_.write_reg(ed.len_space, ed.len_reg, 0, 8);
+                }
                 uint32_t st = read_reg8(model_.usb.space, model_.usb.int_st);
-                st = (st & ~0xFFu) | u.ep;
+                st = (st & ~0xFFu) | (u.ep & 0x0Fu) | 0x20u;
                 write_reg8(model_.usb.space, model_.usb.int_st, st);
+
+                uint32_t fg = read_reg8(model_.usb.space, model_.usb.int_fg);
+                fg |= (1u << model_.usb.int_fg_bit);
+                if (model_.usb.tog_ok_bit > 0 && model_.usb.tog_ok_bit < 8) {
+                    fg |= (1u << model_.usb.tog_ok_bit);
+                }
+                if (model_.usb.bus_reset_bit < 8) {
+                    fg &= ~(1u << model_.usb.bus_reset_bit);
+                }
+                write_reg8(model_.usb.space, model_.usb.int_fg, fg);
             } else if (token == UsbToken::Reset) {
                 for (const auto& ed : model_.usb.endpoints)
                     for (uint32_t i = 0; i < ed.max_packet; ++i)
@@ -1024,7 +1074,7 @@ uint32_t Cpu::read_usb_byte(uint8_t ep, uint32_t offset) {
     uint32_t base = model_.usb.buffer_base;
     for (const auto& e : model_.usb.endpoints) {
         if (e.index == ep) {
-            base += e.buffer_offset;
+            base += e.buffer_offset + e.tx_buffer_offset;
             break;
         }
     }

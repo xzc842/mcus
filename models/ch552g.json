@@ -118,8 +118,11 @@
     { "name": "USB_CTRL",    "space": "sfr", "addr": 226, "width": 8, "semantics": "plain", "reset_value": 6 },
     { "name": "USB_DEV_AD",  "space": "sfr", "addr": 227, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "UEP0_CTRL",   "space": "sfr", "addr": 220, "width": 8, "semantics": "plain", "reset_value": 0 },
+    { "name": "UEP0_T_LEN",  "space": "sfr", "addr": 221, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "UEP1_CTRL",   "space": "sfr", "addr": 210, "width": 8, "semantics": "plain", "reset_value": 0 },
+    { "name": "UEP1_T_LEN",  "space": "sfr", "addr": 211, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "UEP2_CTRL",   "space": "sfr", "addr": 212, "width": 8, "semantics": "plain", "reset_value": 0 },
+    { "name": "UEP2_T_LEN",  "space": "sfr", "addr": 213, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "UEP3_CTRL",   "space": "sfr", "addr": 214, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "UEP4_CTRL",   "space": "sfr", "addr": 222, "width": 8, "semantics": "plain", "reset_value": 0 },
     { "name": "UEP4_1_MOD",  "space": "sfr", "addr": 234, "width": 8, "semantics": "plain", "reset_value": 0 },
@@ -248,11 +251,11 @@
     "int_fg": 216, "int_st": 217, "mis_st": 218, "rx_len": 219,
     "int_en": 225, "ctrl": 226, "dev_ad": 227,
     "int_fg_bit": 1,
-    "buffer_space": "xram", "buffer_base": 704, "buffer_stride": 64,
+    "buffer_space": "xram", "buffer_base": 0, "buffer_stride": 64,
     "endpoints": [
-      { "index": 0, "ctrl": 220, "max_packet": 64 },
-      { "index": 1, "ctrl": 210, "max_packet": 64 },
-      { "index": 2, "ctrl": 212, "max_packet": 64 },
+      { "index": 0, "ctrl": 220, "max_packet": 64, "buffer_offset": 0 },
+      { "index": 1, "ctrl": 210, "max_packet": 64, "buffer_offset": 10 },
+      { "index": 2, "ctrl": 212, "len_reg": 213, "max_packet": 64, "buffer_offset": 20, "tx_buffer_offset": 64 },
       { "index": 3, "ctrl": 214, "max_packet": 64 },
       { "index": 4, "ctrl": 222, "max_packet": 64 }
     ]

@@ -322,6 +322,8 @@ Model Model::load_from_file(const std::string& path) {
         m.usb.ctrl = u32(u, "ctrl");
         m.usb.dev_ad = u32(u, "dev_ad");
         m.usb.int_fg_bit = static_cast<uint8_t>(u32(u, "int_fg_bit", 1));
+        m.usb.tog_ok_bit = static_cast<uint8_t>(u32(u, "tog_ok_bit", 6));
+        m.usb.bus_reset_bit = static_cast<uint8_t>(u32(u, "bus_reset_bit", 0));
         m.usb.buffer_space = str(u, "buffer_space");
         m.usb.buffer_base = u32(u, "buffer_base", 0);
         m.usb.buffer_stride = std::max<uint32_t>(1, u32(u, "buffer_stride", 64));
@@ -336,6 +338,7 @@ Model Model::load_from_file(const std::string& path) {
             ed.buffer_offset = u32(e, "buffer_offset",
                                    static_cast<uint32_t>(ed.index) *
                                        m.usb.buffer_stride);
+            ed.tx_buffer_offset = u32(e, "tx_buffer_offset", 0);
             m.usb.endpoints.push_back(std::move(ed));
         }
     }
