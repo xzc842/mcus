@@ -122,6 +122,7 @@ private:
     void set_irq_pending(uint32_t number);
     uint32_t read_reg8(const SpaceId& space, Addr addr) const;
     void write_reg8(const SpaceId& space, Addr addr, uint32_t value);
+    void raise_usb_int_fg(uint32_t bits);
     uint32_t read_usb_byte(uint8_t ep, uint32_t offset);
     void write_usb_byte(uint8_t ep, uint32_t offset, uint8_t value);
     void complete_spi(size_t index);
