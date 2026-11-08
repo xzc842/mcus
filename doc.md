@@ -73,7 +73,8 @@ mcus/
 │   ├── test_firmware.cpp
 │   └── test_ch552g.cpp
 └── tools/
-    └── dump_shm.cpp
+    ├── dump_shm.cpp
+    └── bench.cpp
 ```
 
 ## 3. 构建与运行
@@ -300,6 +301,10 @@ CPU 核心：
 
 加载 dummy 模型和手写固件，验证 MMIO 写事件、中断进入、复位。
 
+### `tests/bench_*`
+
+CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,000 步。
+
 ### `tests/test_arm_isa.cpp`
 
 加载 `models/stm32f103c8t6.json`，执行包含向量表、MOVW/MOVT、STR、BL、PUSH/POP 的 ARM 固件，验证 Cortex-M3 复位/调用/GPIO。
@@ -325,6 +330,10 @@ CPU 核心：
 验证 CH552G 模型加载、别名寄存器、位地址解析、定时器描述。
 
 ## 8. 工具
+
+### `tools/bench.cpp`
+
+性能基准：CPU 指令吞吐、事件流吞吐、共享内存寄存器访问；`--json` 可机读。
 
 ### `tools/dump_shm.cpp`
 

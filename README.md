@@ -65,6 +65,20 @@ UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)，ARM
 
 详细地址、限制和编译示例见 [docs/stm32.md](docs/stm32.md)。
 
+### 性能基准
+
+```bash
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release -j
+
+./build-release/mcus_bench --model models/dummy.json
+./build-release/mcus_bench --model models/ch552g.json   --isa ./build-release/libmcus_isa_8051.so
+./build-release/mcus_bench --model models/stm32f103c8t6.json   --isa ./build-release/libmcus_isa_arm.so
+```
+
+测量 CPU 指令吞吐、事件流吞吐和共享内存寄存器访问；`--json` 可机读。
+详见 [docs/benchmark.md](docs/benchmark.md)。
+
 ### 通用性
 
 核心不包含 CH552/8051 的分支：空间名、寄存器地址、外设寄存器/位、引脚映射、中断向量、栈方向全部来自模型；架构差异由外部 ISA 动态库提供。仓库里的 `models/generic.json` 使用 `flash`/`ram`/`periph` 空间名和 `mcus-minimal` ISA，`tests/test_generic_model.cpp` 作为“换架构只换 ISA + 模型”的回归测试。
@@ -92,6 +106,7 @@ ctest --test-dir build --output-on-failure
 - `build/libmcus_core.so`：模拟器核心
 - `build/libmcus_isa_8051.so`：8051 ISA 动态库（外部加载）
 - `build/libmcus_isa_arm.so`：ARM Cortex-M3 Thumb/Thumb-2 ISA 动态库（外部加载）
+- `build/mcus_bench`：性能基准工具
 
 ### 运行
 

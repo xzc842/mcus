@@ -81,6 +81,11 @@ set_target_properties(mcus PROPERTIES
 add_executable(dump_shm tools/dump_shm.cpp)
 target_link_libraries(dump_shm PRIVATE mcus_core)
 
+# 性能基准
+add_executable(mcus_bench tools/bench.cpp)
+target_link_libraries(mcus_bench PRIVATE mcus_core ${CMAKE_DL_LIBS})
+add_dependencies(mcus_bench mcus_isa_8051 mcus_isa_arm)
+
 # 测试
 enable_testing()
 add_subdirectory(tests)

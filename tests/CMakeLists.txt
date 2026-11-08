@@ -73,3 +73,19 @@ target_link_libraries(test_peripherals PRIVATE mcus_core mcus_isa_8051)
 target_compile_definitions(test_peripherals PRIVATE
     MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json")
 add_test(NAME peripherals COMMAND test_peripherals)
+add_test(NAME bench_minimal COMMAND mcus_bench
+    --model ${CMAKE_SOURCE_DIR}/models/dummy.json
+    --steps 20000 --warmup 100 --repeat 1)
+set_tests_properties(bench_minimal PROPERTIES LABELS bench)
+
+add_test(NAME bench_8051 COMMAND mcus_bench
+    --model ${CMAKE_SOURCE_DIR}/models/ch552g.json
+    --isa ${CMAKE_BINARY_DIR}/libmcus_isa_8051.so
+    --steps 20000 --warmup 100 --repeat 1)
+set_tests_properties(bench_8051 PROPERTIES LABELS bench)
+
+add_test(NAME bench_arm COMMAND mcus_bench
+    --model ${CMAKE_SOURCE_DIR}/models/stm32f103c8t6.json
+    --isa ${CMAKE_BINARY_DIR}/libmcus_isa_arm.so
+    --steps 20000 --warmup 100 --repeat 1)
+set_tests_properties(bench_arm PROPERTIES LABELS bench)
