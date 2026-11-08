@@ -41,6 +41,9 @@ public:
     virtual void write8(const SpaceId& space, Addr addr, uint8_t v) = 0;
     virtual void write16(const SpaceId& space, Addr addr, uint16_t v) = 0;
     virtual void write32(const SpaceId& space, Addr addr, uint32_t v) = 0;
+    // 取指快路径：默认走 code 空间；Cpu 会覆盖为模型复位空间的直接块访问。
+    virtual uint8_t fetch8(Addr addr) { return read8("code", addr); }
+    virtual uint16_t fetch16(Addr addr) { return read16("code", addr); }
     // 架构相关回调：中断返回时恢复优先级状态等，默认空
     virtual void on_reti() {}
 };

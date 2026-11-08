@@ -8,6 +8,8 @@
 models/
 ├── ch552g.json
 ├── dummy.json
+├── generic.json
+├── stm32f103c8t6.json
 └── schema.md
 ```
 
@@ -30,10 +32,6 @@ models/
   "arch": "8051",
   "crystal_hz": 24000000,
   "cycles_per_instruction": 1,
-  "reset_vector": 0,
-  "reset_space": "code",
-  "initial_sp": 7,
-  "sp_space": "iram",
   "isa_extensions": ["wch_dptr1_movx"],
   "arch_desc": { ... },
   "regions": [ ... ],
@@ -51,10 +49,6 @@ models/
 | `arch` | string | ISA 名，`"8051"`/`"arm"`/`"mcus-minimal"`/自定义 |
 | `crystal_hz` | uint32 | 虚拟晶振频率（Hz） |
 | `cycles_per_instruction` | uint32 | 每条指令粗略虚拟耗时，默认 1 |
-| `reset_vector` | uint32 | 复位向量地址 |
-| `reset_space` | string | 复位向量所在空间 |
-| `initial_sp` | uint32 | 初始 SP |
-| `sp_space` | string | 栈空间 |
 | `isa_extensions` | string[] | ISA 扩展名，如 `wch_dptr1_movx` |
 | `arch_desc` | object | 架构级描述，见第 3 节 |
 | `regions` | object[] | 地址空间，见第 4 节 |
@@ -63,7 +57,7 @@ models/
 | `interrupts` | object[] | 中断，见第 7 节 |
 | `timers` | object[] | 定时器，见第 8 节 |
 
-**`reset_vector`/`reset_space`/`initial_sp`/`sp_space` 是顶层字段，`arch_desc` 里也有同名，`arch_desc` 优先。** **新模型建议只写 `arch_desc`，顶层字段兼容旧模型。**
+**复位相关字段 `reset_vector`/`reset_space`/`initial_sp`/`sp_space` 写在 `arch_desc` 中。**
 
 ## 3. `arch_desc`：架构级描述
 
@@ -342,7 +336,7 @@ models/
 | `clear_tx_on_write` | 写数据时先清发送标志（如 USART TXE） |
 | `signal_irq_on_rx` | RX 时置中断 pending（如 NVIC ISPR） |
 
-写 `data` 会发 `BusEvent(UartTx)`；外部 `push_in(BusEvent(UartRx))` 会写入 FIFO、置接收标志。读 `data` 会取走 FIFO 数据并在 FIFO 空时清接收标志。旧字段名 `scon`/`sbuf`/`ti_bit`/`ri_bit` 仍作为别名兼容。
+写 `data` 会发 `BusEvent(UartTx)`；外部 `push_in(BusEvent(UartRx))` 会写入 FIFO、置接收标志。读 `data` 会取走 FIFO 数据并在 FIFO 空时清接收标志。
 
 ### 9.2 `spis`
 
@@ -558,7 +552,7 @@ ctest --test-dir build --output-on-failure
 
 ### `UART0`/`UART1`/`SPI0` 中断进了但 `jbc`/`jnb` 读到 0
 
-**这些中断的 `clear_pending` 必须是 `false`：标志应由 ISR 自己清。`Cpu` 现在会屏蔽服务中的同号/同级中断，不会再出现“中断重入导致 ISR 不执行、SP 暴涨”的问题。**
+**这些中断的 `clear_pending` 必须是 `false`：标志应由 ISR 自己清。`Cpu` 会屏蔽服务中的同号/同级中断，避免中断重入。**
 
 ### `WDOG` 不溢出复位
 

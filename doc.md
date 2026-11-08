@@ -20,6 +20,8 @@
 mcus/
 ├── CMakeLists.txt
 ├── README.md
+├── doc.md
+├── docs/
 ├── config/
 │   ├── example.toml
 │   └── debug.toml
@@ -132,7 +134,7 @@ ctest --test-dir build --output-on-failure
 
 ### `models/schema.md`
 
-模型文件字段说明：`regions`、`registers`、`pins`、`interrupts`、`timers`、`isa_extensions`、`reset_vector`、`initial_sp` 等。
+模型文件字段说明入口，完整字段见 `docs/model_guide.md`。
 
 ### `models/dummy.json`
 
@@ -232,7 +234,7 @@ TOML 配置结构：`SimulatorSection`、`CrystalSection`、`DebugSection`、`Co
 
 ### `src/event_stream.cpp`
 
-创建/映射事件流共享内存，out/in 两个 SPSC 环的头尾原子指针、容量、全局 seq、双向背压标志；`push`/`pop` 走 out，`push_in`/`pop_in` 走 in；attach 时置 `host_attached`。
+创建/映射事件流共享内存，out/in 两个 SPSC 环的头尾原子指针、容量、全局 seq、双向背压标志；`push`/`pop` 走 out，`push_in`/`pop_in` 走 in；attach 或 `push_in` 时置 `host_attached`。
 
 ### `src/cpu.cpp`
 
@@ -247,7 +249,7 @@ CPU 核心：
 - `handle_mmio_read` 按别名选语义，端口读叠加 `PinState.value`，读清零后清零，并调用外设读侧效应。
 - `advance_peripherals`：推进 UART 发送、SPI 完成、PWM 计数/引脚、ADC 转换、TKEY 扫描。
 - `poll_bus_in`：消费 in 环的 UART RX、SPI MISO、USB SETUP/IN/OUT/Reset。
-- `poll_external_pins`：检测外部 `PinState` 变化，发 Pin 事件并触发 GPIO 边沿中断。
+- `poll_external_pins`：检测外部 `PinState` 变化，发 Pin 事件并触发 GPIO 边沿中断；有 `gpio_irq` 的模型每步采样，否则每 16 步采样一次。
 - `check_inject_slots` 消费注入区。
 - `check_interrupt` 检查挂起位和中断位图；同号/同级中断在服务期间屏蔽，避免中断风暴。
 - `enter_interrupt` 保存上下文、压 PC、按 `clear_pending` 清挂起位、跳向量，并记录服务状态。
@@ -350,20 +352,16 @@ CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,00
 - **引脚**：外部程序读写 `PinState` 的 function/value/direction；输入引脚变化会被模拟器在指令边界采样，产生 Pin 事件和 GPIO 边沿中断。
 - **总线**：UART/SPI/USB 全部通过 `BusEvent`/`UsbEvent` 收发，详细约定见 `docs/external.md`。
 
-## 10. 当前限制
+## 10. 限制
 
 ### 10.1 CH552 USB 的 xSFR 未建模
 
-`ch552g.json` 已建模 USB 控制/中断寄存器和 5 个端点，端点缓冲固定映射在 `xram:0x2C0`（`usb.buffer_base`），每个端点 64 字节。CH552 的 `UEPn_DMA`/`UEPn_T_LEN` 等 xSFR 尚未加入模型，因此真实固件如果依赖这些寄存器设置缓冲地址/发送长度，需要后续补模型。
+`ch552g.json` 已建模 USB 控制/中断寄存器和 5 个端点，端点缓冲固定映射在 `xram:0x2C0`（`usb.buffer_base`），每个端点 64 字节。CH552 的 `UEPn_DMA`/`UEPn_T_LEN` 等 xSFR 尚未加入模型，真实固件如果依赖这些寄存器设置缓冲地址/发送长度，需要补模型。
 
-### 10.2 日志
+### 10.2 只读内存区域
 
-排查用日志已基本清理，`src/` 中只剩 `enter interrupt` 一条 `MCUS_DEBUG`。
+`regions[].read_only=true` 的普通内存区域（CH552 的 `code`）拒绝 CPU 写并告警；固件加载仍可直接写入。核心不按“复位空间名字”判断，换架构只需在模型里标注只读区域。
 
-### 10.3 外部监控程序偏移依赖
+### 10.3 其他架构限制
 
-`ch552g_monitor/main.cpp` 里 `kRegisterCount` 硬编码为模型寄存器数量。当前 `ch552g.json` 仍是 82 个寄存器，但模型增删寄存器后 `pins` 偏移会错。后续应改为读模型文件计算偏移，或在共享内存布局中导出偏移描述。
-
-### 10.4 `Cpu::write8` 对只读内存区域的保护
-
-已实现：`regions[].read_only=true` 的普通内存区域（CH552 的 `code`）写操作直接拒绝并告警。核心不再按“复位空间名字”判断，换架构只需在模型里标注只读区域。
+ARM Cortex-M3 的未实现指令、I2C/USB/CAN/DMA 协议引擎、EXTI 接入等限制见 `docs/stm32.md`。

@@ -101,6 +101,7 @@ private:
     Header* header_ = nullptr;
     DebugEvent* out_slots_ = nullptr;
     DebugEvent* in_slots_ = nullptr;
+    size_t capacity_ = 0;
     bool attached_ = false;
 };
 

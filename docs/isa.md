@@ -45,7 +45,7 @@ extern "C" void mcus_isa_destroy(mcus::InstructionSet* isa) {
 
 | 符号 | 作用 |
 |---|---|
-| `mcus_isa_abi_version` | 返回 ABI 版本，必须等于 `kIsaAbiVersion` |
+| `mcus_isa_abi_version` | 返回 ABI 版本，必须等于 `kIsaAbiVersion`（当前 ABI 2） |
 | `mcus_isa_arch` | 返回架构名，必须与模型 `arch` 一致 |
 | `mcus_isa_create` | 按模型创建 `InstructionSet` 实例 |
 | `mcus_isa_destroy` | 销毁实例 |
@@ -63,7 +63,7 @@ add_library(mcus_isa_arm SHARED src/isa_arm.cpp)
 target_link_libraries(mcus_isa_arm PRIVATE mcus_core)
 ```
 
-`mcus` 会校验 ABI 版本和 `arch`，不一致直接报错退出。
+`mcus` 会校验 ABI 版本和 `arch`，不一致直接报错退出。ABI 2 在 `MemoryBus` 中增加了 `fetch8`/`fetch16` 取指快路径，旧版 ISA 动态库需要重新编译。
 
 ## 3. 模型文件
 
@@ -204,7 +204,7 @@ virtual bool higher_priority(const InterruptDesc&, const InterruptDesc&) const;
 - `reset`：设置 PC/SP/架构寄存器。ARM 可在里面读向量表拿初始 SP/PC。
 - `resolve_bit_addr`：8051 的位地址规则放在这里，核心不再写死。
 - `on_mmio_write`/`on_mmio_read`：架构相关副作用；简单的“写 A 置 B 位”优先用模型的 `on_write` 动作。
-- `CpuRegisters::r` 已扩到 32 个，覆盖 ARM（16）和 RISC-V（32）。
+- `CpuRegisters::r` 为 32 个通用寄存器，覆盖 ARM（16）和 RISC-V（32）。
 
 ## 6. ISA 扩展
 

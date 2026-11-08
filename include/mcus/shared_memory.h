@@ -19,6 +19,7 @@
 #include "model.h"
 #include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <string>
 
 namespace mcus {
@@ -98,6 +99,24 @@ public:
 
     uint32_t read_reg(const SpaceId& space, Addr addr, uint8_t width) const;
     void write_reg(const SpaceId& space, Addr addr, uint32_t value, uint8_t width);
+    // 热路径：先用 reg_offset() 查一次偏移，之后直接按偏移读写。
+    size_t reg_offset(const SpaceId& space, Addr addr) const;
+    uint32_t read_reg_at(size_t off, uint8_t width) const {
+        const uint8_t* p = static_cast<const uint8_t*>(base_) + mmio_offset_ + off;
+        switch (width) {
+            case 8: return *p;
+            case 16: { uint16_t v; std::memcpy(&v, p, 2); return v; }
+            default: { uint32_t v; std::memcpy(&v, p, 4); return v; }
+        }
+    }
+    void write_reg_at(size_t off, uint32_t value, uint8_t width) {
+        uint8_t* p = static_cast<uint8_t*>(base_) + mmio_offset_ + off;
+        switch (width) {
+            case 8: { uint8_t v = static_cast<uint8_t>(value); std::memcpy(p, &v, 1); break; }
+            case 16: { uint16_t v = static_cast<uint16_t>(value); std::memcpy(p, &v, 2); break; }
+            default: { uint32_t v = value; std::memcpy(p, &v, 4); break; }
+        }
+    }
     void reset_all();
 
     uint8_t* dump_buffer();
@@ -131,6 +150,7 @@ private:
     size_t breakpoint_slots_size_ = 0;
 
     std::unordered_map<std::string, size_t> reg_offset_;
+    std::unordered_map<uint64_t, size_t> reg_offset_u64_; // (space_idx<<32)|addr
     std::vector<size_t> reg_offset_fast_;
     std::vector<SpaceId> inject_spaces_;
 

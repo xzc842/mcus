@@ -83,6 +83,11 @@ int main() {
         cpu.load_firmware(fw);
         PinState* pins = shm.pins();
 
+        // xRAM 的 addr_mask 边界：16 位访问跨 0x3FF -> 0 时要逐字节回绕。
+        cpu.write8("xram", 0x3FF, 0xAA);
+        cpu.write8("xram", 0x000, 0xBB);
+        assert(cpu.read16("xram", 0x3FF) == 0xBBAA);
+
         // ---- UART0 TX ----
         cpu.write8("sfr", 0x98, 0x50);       // SCON: mode 1
         cpu.write8("sfr", 0x99, 0x55);       // SBUF

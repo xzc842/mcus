@@ -1,4 +1,4 @@
-# mcus(MCU Simulator)
+# mcus (MCU Simulator)
 
 `mcus` 是一个**通用单片机模拟器**。它不模拟芯片内部的门级或电气行为，而是提供一个“时间对齐的指令执行环境 + 寄存器语义层”，让为单片机编译的固件以为自己运行在真实芯片上。
 
@@ -15,7 +15,7 @@
 
 ## 功能列表
 
-### CH552G(8051) 
+### CH552G (8051)
 
 已验证：
 
@@ -40,7 +40,6 @@
 | UART0 发送/接收 + TI/RI 中断 | `uart_test` + `test_peripherals` | ✅ |
 | UART1 发送/接收 + TI1/RI1 中断 | `uart1_test` + `test_peripherals` | ✅ |
 | GPIO 输入采样 + 边沿中断 | `test_peripherals` | ✅ |
-
 
 ### 总线与 USB 的收发模型
 
@@ -72,23 +71,39 @@ cmake -B build-release -DCMAKE_BUILD_TYPE=Release
 cmake --build build-release -j
 
 ./build-release/mcus_bench --model models/dummy.json
-./build-release/mcus_bench --model models/ch552g.json   --isa ./build-release/libmcus_isa_8051.so
-./build-release/mcus_bench --model models/stm32f103c8t6.json   --isa ./build-release/libmcus_isa_arm.so
+./build-release/mcus_bench --model models/ch552g.json \
+  --isa ./build-release/libmcus_isa_8051.so
+./build-release/mcus_bench --model models/stm32f103c8t6.json \
+  --isa ./build-release/libmcus_isa_arm.so
 ```
 
-测量 CPU 指令吞吐、事件流吞吐和共享内存寄存器访问；`--json` 可机读。
-详见 [docs/benchmark.md](docs/benchmark.md)。
+Release 实测（2026-11-08，Intel Core Ultra 5 225H，Linux 7.0.0-42-generic，
+`-DCMAKE_BUILD_TYPE=Release`，1,000,000 步，warmup 10,000；CPU 项 repeat 3 取最好，
+表中为多次运行的中位数/代表值）：
+
+| 模型 / ISA | CPU steps/s | 虚拟周期/s | ns/step | 事件流 events/s | 共享内存 ops/s |
+|---|---:|---:|---:|---:|---:|
+| `dummy` / `mcus-minimal` | 16,650,301 | 66,601,202 | 60.06 | 26,200,000 | 29,200,000 |
+| `ch552g` / `8051` | 15,460,790 | 15,460,790 | 64.68 | 26,100,000 | 43,050,000 |
+| `stm32f103c8t6` / `arm` | 13,589,000 | 13,589,000 | 73.60 | 26,000,000 | 32,800,000 |
+
+`dummy` 的虚拟周期是 steps 的 4 倍，因为模型 `cycles_per_instruction=4`；8051/ARM 为 1。
+本机数据随 CPU 频率/负载有约 ±10% 波动；Debug `-O0` 下数字会低一个数量级，不要拿来比较。
+按模型晶振折算，8051 约 0.64x 实时（24MHz），STM32F103 约 0.19x 实时（72MHz）。
+
+`ctest -L bench` 里的三条基准只跑 20,000 步，用于冒烟和防回归，不代表上表性能。
+
+`--json` 可机读；完整参数和指标说明见 [docs/benchmark.md](docs/benchmark.md)。
 
 ### 通用性
 
 核心不包含 CH552/8051 的分支：空间名、寄存器地址、外设寄存器/位、引脚映射、中断向量、栈方向全部来自模型；架构差异由外部 ISA 动态库提供。仓库里的 `models/generic.json` 使用 `flash`/`ram`/`periph` 空间名和 `mcus-minimal` ISA，`tests/test_generic_model.cpp` 作为“换架构只换 ISA + 模型”的回归测试。
 
-### 仍需外部设备模型的部分
+### 外部设备模型边界
 
 - UART/SPI 只有“寄存器 + 事件”的主机侧，真实对端（串口设备、SPI 从机）由外部程序通过 `push_in()` 模拟。
 - USB 已实现端点缓冲、SETUP/IN/OUT 包事件和 USB 中断；但 CH552 的 USB DMA/T_LEN 等 xSFR 尚未建模，端点缓冲固定映射在模型 `usb.buffer_base` 指定的 xRAM 区域。
 - I2C 的 `BusEventKind` 已预留，但 CH552G 模型没有 I2C 外设，暂未启用。
-
 
 ## 构建与运行
 
@@ -153,7 +168,6 @@ mcus --isa <isa.so> --model <model.json> --firmware <firmware> --config <config.
 
 **注意**：`dump_shm` 以只读方式打开共享内存（`create=false`），不会重置模拟器状态。`mcus` 运行时用另一个终端 `dump_shm`，可实时观察 `P1`、`pc`、`virtual_time`。
 
-
 ## 致谢
 
 本项目的开发离不开以下优秀开源项目和社区的贡献，在此我们表示由衷的感谢。
@@ -169,7 +183,7 @@ Apache-2.0 [LICENSE](LICENSE)
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request。请参阅[ToDo文档](ToDo.md)
+欢迎提交 Issue 和 Pull Request。请参阅[项目文档](doc.md)
 
 ## 联系方式
 ---

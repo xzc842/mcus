@@ -38,12 +38,22 @@ constexpr uint32_t kExcReturn = 0xFFFFFFF9u;
 
 class IsaArm : public InstructionSet {
 public:
-    explicit IsaArm(const Model& model) : model_(model) {}
+    explicit IsaArm(const Model& model) : model_(model) {
+        for (const auto& r : model_.regions) {
+            if (r.contains(model_.arch_desc.reset_vector) && !r.is_mmio) {
+                code_space_ = r.space;
+                code_base_ = r.base;
+                code_end_ = r.base + r.size;
+                use_reset_code_ = (r.space == model_.arch_desc.reset_space);
+                break;
+            }
+        }
+    }
 
     ExecResult execute(CpuRegisters& regs, MemoryBus& bus) override {
         ExecResult res;
         res.cycles = 1;
-        regs.flags |= kT;
+        if (!(regs.flags & kT)) regs.flags |= kT;
 
         const Addr pc = regs.pc & ~1u;
         const uint16_t hw1 = fetch16(bus, pc);
@@ -162,12 +172,22 @@ public:
 
 private:
     const Model& model_;
+    SpaceId code_space_;
+    Addr code_base_ = 0;
+    Addr code_end_ = 0;
+    bool use_reset_code_ = false;
+    mutable const MemoryRegion* last_region_ = nullptr;
 
     // ---- 地址空间与内存 ----
 
     const MemoryRegion* region_for(Addr addr) const {
-        for (const auto& r : model_.regions)
-            if (r.contains(addr)) return &r;
+        if (last_region_ && last_region_->contains(addr)) return last_region_;
+        for (const auto& r : model_.regions) {
+            if (r.contains(addr)) {
+                last_region_ = &r;
+                return &r;
+            }
+        }
         return nullptr;
     }
 
@@ -196,6 +216,10 @@ private:
         if (r) bus.write32(r->space, addr, v);
     }
     uint16_t fetch16(MemoryBus& bus, Addr addr) const {
+        if (use_reset_code_) return bus.fetch16(addr);
+        if (!code_space_.empty() && addr >= code_base_ &&
+            static_cast<uint64_t>(addr) + 2 <= code_end_)
+            return bus.read16(code_space_, addr);
         const auto* r = region_for(addr);
         return r ? bus.read16(r->space, addr) : 0xFFFF;
     }

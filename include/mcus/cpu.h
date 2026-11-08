@@ -40,9 +40,9 @@ class Cpu : public MemoryBus {
 public:
     Cpu(const Model& model, SharedMemory& shm, EventStream& stream);
     VirtTime step();
-    bool halted() const { return halted_.load(); }
-    bool paused() const { return paused_.load(); }
-    void set_paused(bool p) { paused_.store(p); }
+    bool halted() const { return halted_.load(std::memory_order_relaxed); }
+    bool paused() const { return paused_.load(std::memory_order_relaxed); }
+    void set_paused(bool p) { paused_.store(p, std::memory_order_relaxed); }
     const CpuRegisters& regs() const { return regs_; }
     uint32_t pc() const { return regs_.pc; }
 
@@ -61,6 +61,8 @@ public:
     // 超时兜底：以默认 MISO(0xFF) 完成所有挂起传输。
     void force_complete_spi();
 
+    uint8_t fetch8(Addr addr) override;
+    uint16_t fetch16(Addr addr) override;
     uint8_t read8(const SpaceId& space, Addr addr) override;
     uint16_t read16(const SpaceId& space, Addr addr) override;
     uint32_t read32(const SpaceId& space, Addr addr) override;
@@ -79,13 +81,59 @@ private:
     std::atomic<bool> halted_{false};
 
     struct MemBlock { Addr base; std::vector<uint8_t> data; };
+    struct FastBlock {
+        MemBlock* block = nullptr;
+        Addr base = 0;
+        Addr mask = 0;
+        Addr mask_base = 0;
+        bool has_mask = false;
+        bool read_only = false;
+    };
     std::unordered_map<SpaceId, MemBlock> memory_;
-    std::unordered_map<SpaceId, MemBlock*> fast_blocks_;
+    struct FastBlockEntry { SpaceId space; FastBlock block; };
+    std::vector<FastBlockEntry> fast_blocks_;
+    FastBlock* code_fast_ = nullptr;
+
+    FastBlock* find_fast(const SpaceId& space) {
+        for (auto& e : fast_blocks_)
+            if (e.space == space) return &e.block;
+        return nullptr;
+    }
+
+    ControlBlock* ctl_ = nullptr;
+    PinState* pins_ = nullptr;
+    uint8_t* irq_bitmap_ = nullptr;
+    size_t irq_bitmap_size_ = 0;
+    InjectHeader* inject_header_ = nullptr;
+    InjectSlot* inject_slots_ = nullptr;
+    uint32_t inject_capacity_ = 0;
+    BreakpointHeader* breakpoint_header_ = nullptr;
+    BreakpointSlot* breakpoint_slots_ = nullptr;
 
     bool has_global_irq_enable_ = false;
     SpaceId global_irq_space_;
     Addr global_irq_reg_ = 0;
     uint8_t global_irq_bit_ = 0;
+    size_t global_irq_off_ = SIZE_MAX;
+    uint8_t global_irq_width_ = 8;
+    bool global_irq_invert_ = false;
+
+    struct IrqRuntime {
+        const InterruptDesc* desc = nullptr;
+        size_t pending_off = SIZE_MAX;
+        size_t enable_off = SIZE_MAX;
+        uint8_t pending_width = 8;
+        uint8_t enable_width = 8;
+        uint32_t pending_mask = 0;
+        uint32_t enable_mask = 0;
+    };
+    std::vector<IrqRuntime> irq_rt_;
+    struct IrqGroup {
+        size_t enable_off = SIZE_MAX;
+        uint8_t enable_width = 8;
+        std::vector<const IrqRuntime*> irqs;
+    };
+    std::vector<IrqGroup> irq_groups_;
 
     // 中断服务状态：进入 ISR 时压入，RETI 时弹出。
     // 默认策略：同号/同级中断在服务期间屏蔽；需要抢占时由模型 priority 决定。
@@ -137,6 +185,10 @@ private:
     std::vector<uint32_t> last_pin_value_;
     std::vector<uint32_t> last_pin_function_;
     std::vector<uint32_t> last_pin_direction_;
+    uint32_t pin_poll_skip_ = 0;
+    uint32_t pin_poll_interval_ = 1;
+    uint32_t pin_slow_counter_ = 0;
+    uint32_t last_reported_pc_ = 0xFFFFFFFF;
 
     struct UartRuntime {
         std::deque<uint8_t> rx;
@@ -172,6 +224,7 @@ private:
     std::vector<AdcRuntime> adc_rt_;
     std::vector<TkeyRuntime> tkey_rt_;
     uint32_t next_bus_xfer_id_ = 1;
+    uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY
 
     uint32_t last_bp_pc_ = 0xFFFFFFFF;
 };

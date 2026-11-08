@@ -123,10 +123,14 @@ void SharedMemory::layout() {
         std::string key = Model::reg_key(rd.space, rd.addr);
         reg_offset_[key] = off;
         int sidx = model_.space_index(rd.space);
-        if (sidx >= 0 && rd.addr < 256) {
-            size_t idx = static_cast<size_t>(sidx + 1) * 256 + rd.addr;
-            if (idx < reg_offset_fast_.size())
-                reg_offset_fast_[idx] = off;
+        if (sidx >= 0) {
+            reg_offset_u64_[(static_cast<uint64_t>(static_cast<uint32_t>(sidx)) << 32) |
+                             rd.addr] = off;
+            if (rd.addr < 256) {
+                size_t idx = static_cast<size_t>(sidx + 1) * 256 + rd.addr;
+                if (idx < reg_offset_fast_.size())
+                    reg_offset_fast_[idx] = off;
+            }
         }
         size_t bytes = (rd.width + 7) / 8;
         off += align4(bytes);
@@ -162,46 +166,35 @@ BreakpointSlot* SharedMemory::breakpoints() {
 }
 size_t SharedMemory::breakpoint_capacity() const { return kBreakpointCapacity; }
 
+size_t SharedMemory::reg_offset(const SpaceId& space, Addr addr) const {
+    const int sidx = model_.space_index(space);
+    if (sidx >= 0) {
+        if (addr < 256) {
+            const size_t idx = static_cast<size_t>(sidx + 1) * 256 + addr;
+            if (idx < reg_offset_fast_.size()) {
+                const size_t off = reg_offset_fast_[idx];
+                if (off != SIZE_MAX) return off;
+            }
+        }
+        const uint64_t key =
+            (static_cast<uint64_t>(static_cast<uint32_t>(sidx)) << 32) | addr;
+        const auto it = reg_offset_u64_.find(key);
+        if (it != reg_offset_u64_.end()) return it->second;
+    }
+    const auto it = reg_offset_.find(Model::reg_key(space, addr));
+    return it == reg_offset_.end() ? SIZE_MAX : it->second;
+}
+
 uint32_t SharedMemory::read_reg(const SpaceId& space, Addr addr, uint8_t width) const {
-    size_t off = SIZE_MAX;
-    int sidx = model_.space_index(space);
-    if (sidx >= 0 && addr < 256) {
-        size_t idx = static_cast<size_t>(sidx + 1) * 256 + addr;
-        if (idx < reg_offset_fast_.size())
-            off = reg_offset_fast_[idx];
-    }
-    if (off == SIZE_MAX) {
-        auto it = reg_offset_.find(Model::reg_key(space, addr));
-        if (it == reg_offset_.end()) return 0;
-        off = it->second;
-    }
-    const uint8_t* p = static_cast<const uint8_t*>(base_) + mmio_offset_ + off;
-    switch (width) {
-        case 8: return *p;
-        case 16: { uint16_t v; std::memcpy(&v, p, 2); return v; }
-        default: { uint32_t v; std::memcpy(&v, p, 4); return v; }
-    }
+    const size_t off = reg_offset(space, addr);
+    if (off == SIZE_MAX) return 0;
+    return read_reg_at(off, width);
 }
 
 void SharedMemory::write_reg(const SpaceId& space, Addr addr, uint32_t value, uint8_t width) {
-    size_t off = SIZE_MAX;
-    int sidx = model_.space_index(space);
-    if (sidx >= 0 && addr < 256) {
-        size_t idx = static_cast<size_t>(sidx + 1) * 256 + addr;
-        if (idx < reg_offset_fast_.size())
-            off = reg_offset_fast_[idx];
-    }
-    if (off == SIZE_MAX) {
-        auto it = reg_offset_.find(Model::reg_key(space, addr));
-        if (it == reg_offset_.end()) return;
-        off = it->second;
-    }
-    uint8_t* p = static_cast<uint8_t*>(base_) + mmio_offset_ + off;
-    switch (width) {
-        case 8: { uint8_t v = static_cast<uint8_t>(value); std::memcpy(p, &v, 1); break; }
-        case 16: { uint16_t v = static_cast<uint16_t>(value); std::memcpy(p, &v, 2); break; }
-        default: { uint32_t v = value; std::memcpy(p, &v, 4); break; }
-    }
+    const size_t off = reg_offset(space, addr);
+    if (off == SIZE_MAX) return;
+    write_reg_at(off, value, width);
 }
 
 void SharedMemory::reset_all() {

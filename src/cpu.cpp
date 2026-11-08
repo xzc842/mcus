@@ -85,13 +85,76 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
 
     for (const auto& sp : model_.arch_desc.fast_spaces) {
         auto it = memory_.find(sp);
-        if (it != memory_.end()) fast_blocks_[sp] = &it->second;
+        if (it == memory_.end()) continue;
+        FastBlock fb;
+        fb.block = &it->second;
+        fb.base = it->second.base;
+        for (const auto& r : model_.regions) {
+            if (r.is_mmio || r.space != sp) continue;
+            fb.read_only = r.read_only;
+            if (r.addr_mask != 0) {
+                fb.has_mask = true;
+                fb.mask = r.addr_mask;
+                fb.mask_base = r.base;
+            }
+            break;
+        }
+        fast_blocks_.push_back(FastBlockEntry{sp, fb});
     }
+    ctl_ = shm_.control();
+    pins_ = shm_.pins();
+    // 有 GPIO 边沿中断的模型每步采样；纯轮询模型可低频采样以降低开销。
+    pin_poll_interval_ = model_.gpio_irq.present ? 1u : 16u;
+    irq_bitmap_ = shm_.interrupt_bitmap();
+    irq_bitmap_size_ = shm_.interrupt_bitmap_size();
+    inject_header_ = shm_.inject_header();
+    inject_slots_ = shm_.inject_slots();
+    inject_capacity_ = static_cast<uint32_t>(shm_.inject_capacity());
+    breakpoint_header_ = shm_.breakpoint_header();
+    breakpoint_slots_ = shm_.breakpoints();
+
     if (model_.arch_desc.global_irq_enable.present) {
         has_global_irq_enable_ = true;
         global_irq_space_ = model_.arch_desc.global_irq_enable.space;
         global_irq_reg_ = model_.arch_desc.global_irq_enable.reg;
         global_irq_bit_ = model_.arch_desc.global_irq_enable.bit;
+        global_irq_invert_ = model_.arch_desc.global_irq_enable.invert;
+        global_irq_off_ = shm_.reg_offset(global_irq_space_, global_irq_reg_);
+        if (const RegisterDesc* gr =
+                model_.find_register(global_irq_space_, global_irq_reg_))
+            global_irq_width_ = gr->width;
+    }
+
+    for (const auto& irq : model_.interrupts) {
+        IrqRuntime rt;
+        rt.desc = &irq;
+        rt.pending_off = shm_.reg_offset(irq.pending_space, irq.pending_reg);
+        rt.enable_off = shm_.reg_offset(irq.enable_space, irq.enable_reg);
+        if (const RegisterDesc* pr =
+                model_.find_register(irq.pending_space, irq.pending_reg))
+            rt.pending_width = pr->width;
+        if (const RegisterDesc* er =
+                model_.find_register(irq.enable_space, irq.enable_reg))
+            rt.enable_width = er->width;
+        rt.pending_mask = irq.pending_mask ? irq.pending_mask
+                                           : (1u << irq.pending_bit);
+        rt.enable_mask = (1u << irq.enable_bit);
+        irq_rt_.push_back(rt);
+    }
+
+    // 按 enable 寄存器分组：没有中断使能时只读几个 enable 寄存器，
+    // 不再逐个 IRQ 读 pending。
+    for (const auto& rt : irq_rt_) {
+        if (rt.enable_off == SIZE_MAX) continue;
+        IrqGroup* group = nullptr;
+        for (auto& g : irq_groups_)
+            if (g.enable_off == rt.enable_off &&
+                g.enable_width == rt.enable_width) { group = &g; break; }
+        if (!group) {
+            irq_groups_.push_back(IrqGroup{rt.enable_off, rt.enable_width, {}});
+            group = &irq_groups_.back();
+        }
+        group->irqs.push_back(&rt);
     }
 
     reset();
@@ -146,7 +209,8 @@ void Cpu::load_firmware(const FirmwareImage& firmware) {
 
     // ARM 等架构的复位向量/初始 SP 来自固件镜像，必须加载后重新执行 ISA 复位。
     isa_->reset(regs_, *this, model_);
-    shm_.control()->pc.store(regs_.pc);
+    ctl_->pc.store(regs_.pc);
+    last_reported_pc_ = regs_.pc;
 }
 
 void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
@@ -155,13 +219,17 @@ void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
 
 void Cpu::reset() {
     regs_ = CpuRegisters{};
-    halted_.store(false);
-    paused_.store(false);
+    halted_.store(false, std::memory_order_relaxed);
+    paused_.store(false, std::memory_order_relaxed);
     irq_in_service_.clear();
     irq_service_priority_.clear();
     now_ = 0;
     last_bp_pc_ = 0xFFFFFFFF;
+    last_reported_pc_ = 0xFFFFFFFF;
+    pin_poll_skip_ = 0;
+    pin_slow_counter_ = 0;
     next_bus_xfer_id_ = 1;
+    periph_active_ = 0;
     uart_rt_.assign(model_.uarts.size(), UartRuntime{});
     spi_rt_.assign(model_.spis.size(), SpiRuntime{});
     pwm_rt_.assign(model_.pwms.size(), PwmRuntime{});
@@ -198,7 +266,7 @@ void Cpu::reset() {
                 shm_.read_reg(pd.direction_space, pd.direction_reg, width);
             direction = (reg >> pd.direction_bit) & 1u;
         }
-        PinState* writable = shm_.pins();
+        PinState* writable = pins_;
         writable[i].value.store(value);
         writable[i].direction.store(direction);
         writable[i].function.store(pd.reset_function);
@@ -207,8 +275,9 @@ void Cpu::reset() {
         last_pin_direction_[i] = direction;
     }
 
-    shm_.control()->pc.store(regs_.pc);
-    shm_.control()->virtual_time.store(0);
+    ctl_->pc.store(regs_.pc);
+    last_reported_pc_ = regs_.pc;
+    ctl_->virtual_time.store(0);
     MCUS_INFO("cpu reset, pc=0x" + std::to_string(regs_.pc) +
               " sp=0x" + std::to_string(regs_.sp));
 }
@@ -223,12 +292,42 @@ size_t Cpu::export_memory(const SpaceId& space, Addr addr, size_t len,
     return n;
 }
 
+uint8_t Cpu::fetch8(Addr addr) {
+    if (code_fast_) {
+        const FastBlock& fb = *code_fast_;
+        if (addr < fb.base) return 0;
+        const size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                       : (addr - fb.base);
+        if (off < fb.block->data.size()) return fb.block->data[off];
+        return 0;
+    }
+    return read8(model_.arch_desc.reset_space, addr);
+}
+
+uint16_t Cpu::fetch16(Addr addr) {
+    if (code_fast_) {
+        const FastBlock& fb = *code_fast_;
+        if (addr < fb.base) return 0;
+        const size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                       : (addr - fb.base);
+        if (off + 2 <= fb.block->data.size()) {
+            uint16_t v;
+            std::memcpy(&v, fb.block->data.data() + off, 2);
+            return v;
+        }
+        return 0;
+    }
+    return read16(model_.arch_desc.reset_space, addr);
+}
+
 uint8_t Cpu::read8(const SpaceId& space, Addr addr) {
-    auto it = fast_blocks_.find(space);
-    if (it != fast_blocks_.end()) {
-        // 完全由模型的 region/base/addr_mask 计算偏移，不假设空间名叫 iram/xram。
-        size_t off = mem_offset(space, addr);
-        if (off != SIZE_MAX) return it->second->data[off];
+    const FastBlock* fbp = find_fast(space);
+    if (fbp) {
+        const FastBlock& fb = *fbp;
+        if (addr < fb.base) return 0;
+        size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                 : (addr - fb.base);
+        if (off < fb.block->data.size()) return fb.block->data[off];
         return 0;
     }
     const MemoryRegion* r = model_.find_region(space, addr);
@@ -239,6 +338,19 @@ uint8_t Cpu::read8(const SpaceId& space, Addr addr) {
 }
 
 uint16_t Cpu::read16(const SpaceId& space, Addr addr) {
+    const FastBlock* fbp = find_fast(space);
+    if (fbp) {
+        const FastBlock& fb = *fbp;
+        if (addr < fb.base) return 0;
+        size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                 : (addr - fb.base);
+        if (off + 2 <= fb.block->data.size()) {
+            uint16_t v;
+            std::memcpy(&v, fb.block->data.data() + off, 2);
+            return v;
+        }
+        // 跨 addr_mask 边界时退回逐字节路径。
+    }
     const MemoryRegion* r = model_.find_region(space, addr);
     if (r && r->is_mmio) return static_cast<uint16_t>(handle_mmio_read(space, addr, 16));
     uint16_t v = 0;
@@ -249,6 +361,19 @@ uint16_t Cpu::read16(const SpaceId& space, Addr addr) {
 }
 
 uint32_t Cpu::read32(const SpaceId& space, Addr addr) {
+    const FastBlock* fbp = find_fast(space);
+    if (fbp) {
+        const FastBlock& fb = *fbp;
+        if (addr < fb.base) return 0;
+        size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                 : (addr - fb.base);
+        if (off + 4 <= fb.block->data.size()) {
+            uint32_t v;
+            std::memcpy(&v, fb.block->data.data() + off, 4);
+            return v;
+        }
+        // 跨 addr_mask 边界时退回逐字节路径。
+    }
     const MemoryRegion* r = model_.find_region(space, addr);
     if (r && r->is_mmio) return handle_mmio_read(space, addr, 32);
     uint32_t v = 0;
@@ -258,16 +383,24 @@ uint32_t Cpu::read32(const SpaceId& space, Addr addr) {
 }
 
 void Cpu::write8(const SpaceId& space, Addr addr, uint8_t v) {
+    const FastBlock* fbp = find_fast(space);
+    if (fbp) {
+        const FastBlock& fb = *fbp;
+        if (fb.read_only) {
+            MCUS_WARN("write to read-only region at 0x" + std::to_string(addr) +
+                      " ignored");
+            return;
+        }
+        if (addr < fb.base) return;
+        size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                 : (addr - fb.base);
+        if (off < fb.block->data.size()) fb.block->data[off] = v;
+        return;
+    }
     const MemoryRegion* region = model_.find_region(space, addr);
     if (region && region->read_only) {
         MCUS_WARN("write to read-only region at 0x" + std::to_string(addr) +
                   " ignored");
-        return;
-    }
-    auto it = fast_blocks_.find(space);
-    if (it != fast_blocks_.end()) {
-        size_t off = mem_offset(space, addr);
-        if (off != SIZE_MAX) it->second->data[off] = v;
         return;
     }
     if (region && region->is_mmio) { handle_mmio_write(space, addr, v, 8); return; }
@@ -277,6 +410,23 @@ void Cpu::write8(const SpaceId& space, Addr addr, uint8_t v) {
 }
 
 void Cpu::write16(const SpaceId& space, Addr addr, uint16_t v) {
+    const FastBlock* fbp = find_fast(space);
+    if (fbp) {
+        const FastBlock& fb = *fbp;
+        if (fb.read_only) {
+            MCUS_WARN("write to read-only region at 0x" + std::to_string(addr) +
+                      " ignored");
+            return;
+        }
+        if (addr < fb.base) return;
+        size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                 : (addr - fb.base);
+        if (off + 2 <= fb.block->data.size()) {
+            std::memcpy(fb.block->data.data() + off, &v, 2);
+            return;
+        }
+        // 跨 addr_mask 边界时退回逐字节路径。
+    }
     const MemoryRegion* r = model_.find_region(space, addr);
     if (r && r->is_mmio) { handle_mmio_write(space, addr, v, 16); return; }
     write8(space, addr, static_cast<uint8_t>(v & 0xFF));
@@ -284,6 +434,23 @@ void Cpu::write16(const SpaceId& space, Addr addr, uint16_t v) {
 }
 
 void Cpu::write32(const SpaceId& space, Addr addr, uint32_t v) {
+    const FastBlock* fbp = find_fast(space);
+    if (fbp) {
+        const FastBlock& fb = *fbp;
+        if (fb.read_only) {
+            MCUS_WARN("write to read-only region at 0x" + std::to_string(addr) +
+                      " ignored");
+            return;
+        }
+        if (addr < fb.base) return;
+        size_t off = fb.has_mask ? ((addr - fb.mask_base) & fb.mask)
+                                 : (addr - fb.base);
+        if (off + 4 <= fb.block->data.size()) {
+            std::memcpy(fb.block->data.data() + off, &v, 4);
+            return;
+        }
+        // 跨 addr_mask 边界时退回逐字节路径。
+    }
     const MemoryRegion* r = model_.find_region(space, addr);
     if (r && r->is_mmio) { handle_mmio_write(space, addr, v, 32); return; }
     for (int i = 0; i < 4; ++i)
@@ -305,7 +472,7 @@ void Cpu::emit_mmio_event(const SpaceId& space, Addr addr, uint32_t value,
 
 void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
                      uint32_t direction) {
-    PinState* pins = shm_.pins();
+    PinState* pins = pins_;
     const uint32_t old_value = pins[index].value.load();
     const uint32_t old_function = pins[index].function.load();
     const uint32_t old_direction = pins[index].direction.load();
@@ -400,7 +567,7 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
 
 void Cpu::sync_pins_for_register(const SpaceId& space, Addr addr,
                                   uint32_t value) {
-    PinState* pins = shm_.pins();
+    PinState* pins = pins_;
     for (size_t i = 0; i < model_.pins.size(); ++i) {
         const PinDesc& pd = model_.pins[i];
         if (pd.source_space == space && pd.source_reg == addr &&
@@ -443,7 +610,7 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
         shm_.write_reg(space, addr, 0, width);
 
     // 输入引脚：把外部写入 PinState.value 的电平叠加回端口寄存器
-    const PinState* pins = shm_.pins();
+    const PinState* pins = pins_;
     bool has_input = false;
     uint32_t merged = v;
     for (size_t i = 0; i < model_.pins.size(); ++i) {
@@ -482,11 +649,12 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
 }
 
 void Cpu::check_inject_slots() {
-    auto* ih = shm_.inject_header();
-    auto* slots = shm_.inject_slots();
-    uint32_t cap = ih->capacity.load();
+    auto* ih = inject_header_;
+    auto* slots = inject_slots_;
     uint32_t tail = ih->tail.load(std::memory_order_acquire);
     uint32_t head = ih->head.load(std::memory_order_acquire);
+    if (tail == head) return;
+    const uint32_t cap = inject_capacity_;
     while (tail != head) {
         InjectSlot& s = slots[tail % cap];
         if (s.ready.load(std::memory_order_acquire)) {
@@ -512,49 +680,50 @@ void Cpu::check_inject_slots() {
     }
 }
 
-static uint32_t read_reg_by_model(const Model& model, SharedMemory& shm,
-                                  const SpaceId& space, Addr addr) {
-    const RegisterDesc* r = model.find_register(space, addr);
-    uint8_t w = r ? r->width : 8;
-    return shm.read_reg(space, addr, w);
-}
 
 bool Cpu::check_interrupt() {
     if (has_global_irq_enable_) {
-        uint32_t v = read_reg_by_model(model_, shm_, global_irq_space_, global_irq_reg_);
+        if (global_irq_off_ == SIZE_MAX) return false;
+        const uint32_t v = shm_.read_reg_at(global_irq_off_, global_irq_width_);
         bool enabled = (v & (1u << global_irq_bit_)) != 0;
-        if (model_.arch_desc.global_irq_enable.invert) enabled = !enabled;
+        if (global_irq_invert_) enabled = !enabled;
         if (!enabled) return false;
     }
 
-    uint8_t* bitmap = shm_.interrupt_bitmap();
+    const uint8_t* bitmap = irq_bitmap_;
+    const size_t bitmap_size = irq_bitmap_size_;
     const InterruptDesc* best = nullptr;
 
-    for (const auto& irq : model_.interrupts) {
-        uint32_t pending = read_reg_by_model(model_, shm_, irq.pending_space, irq.pending_reg);
-        bool bp = false;
-        size_t byte = irq.number / 8, bit = irq.number % 8;
-        if (byte < shm_.interrupt_bitmap_size())
-            bp = (bitmap[byte] & (1u << bit)) != 0;
-        const uint32_t pending_bits = irq.pending_mask
-                                          ? irq.pending_mask
-                                          : (1u << irq.pending_bit);
-        if (!bp && !(pending & pending_bits)) continue;
+    for (const auto& group : irq_groups_) {
+        const uint32_t enable =
+            shm_.read_reg_at(group.enable_off, group.enable_width);
+        if (enable == 0) continue;
 
-        uint32_t enable = read_reg_by_model(model_, shm_, irq.enable_space, irq.enable_reg);
-        if (!(enable & (1u << irq.enable_bit))) continue;
+        for (const IrqRuntime* rtp : group.irqs) {
+            const IrqRuntime& rt = *rtp;
+            if (!(enable & rt.enable_mask)) continue;
 
-        // 中断服务中屏蔽：同号中断不能重入；同级或更低优先级也不能抢占。
-        // 这是 UART/SPI 这类“进入中断后仍需软件清标志”的外设不出现中断风暴的关键。
-        if (!irq_in_service_.empty()) {
-            if (std::find(irq_in_service_.begin(), irq_in_service_.end(),
-                          irq.number) != irq_in_service_.end()) {
-                continue;
+            const InterruptDesc& irq = *rt.desc;
+            const uint32_t pending =
+                shm_.read_reg_at(rt.pending_off, rt.pending_width);
+            bool bp = false;
+            const size_t byte = irq.number / 8;
+            const size_t bit = irq.number % 8;
+            if (byte < bitmap_size)
+                bp = (bitmap[byte] & (1u << bit)) != 0;
+            if (!bp && !(pending & rt.pending_mask)) continue;
+
+            // 中断服务中屏蔽：同号中断不能重入；同级或更低优先级也不能抢占。
+            if (!irq_in_service_.empty()) {
+                if (std::find(irq_in_service_.begin(), irq_in_service_.end(),
+                              irq.number) != irq_in_service_.end()) {
+                    continue;
+                }
+                if (irq.priority >= irq_service_priority_.back()) continue;
             }
-            if (irq.priority >= irq_service_priority_.back()) continue;
-        }
 
-        if (!best || isa_->higher_priority(irq, *best)) best = &irq;
+            if (!best || isa_->higher_priority(irq, *best)) best = &irq;
+        }
     }
 
     if (!best) return false;
@@ -575,13 +744,14 @@ void Cpu::enter_interrupt(const InterruptDesc& irq) {
         isa_->acknowledge_interrupt(irq, *this, model_);
     }
 
-    uint8_t* bitmap = shm_.interrupt_bitmap();
+    uint8_t* bitmap = irq_bitmap_;
     size_t byte = irq.number / 8, bit = irq.number % 8;
-    if (byte < shm_.interrupt_bitmap_size())
+    if (byte < irq_bitmap_size_)
         bitmap[byte] &= static_cast<uint8_t>(~(1u << bit));
 
     regs_.pc = isa_->interrupt_vector(irq, *this, model_);
-    shm_.control()->pc.store(regs_.pc);
+    ctl_->pc.store(regs_.pc);
+    last_reported_pc_ = regs_.pc;
 
     DebugEvent ev{};
     ev.time = now_;
@@ -677,7 +847,7 @@ void Cpu::emit_usb_event(uint32_t xfer_id, UsbToken token, uint8_t ep,
 void Cpu::drive_pwm_pin(const PwmPinDesc& pin, uint32_t value) {
     if (pin.pin >= model_.pins.size()) return;
     // 功能名由模型给出；没有配置时保持引脚当前功能。
-    uint32_t fn = shm_.pins()[pin.pin].function.load();
+    uint32_t fn = pins_[pin.pin].function.load();
     if (!pin.function.empty())
         fn = function_index(model_.pins[pin.pin], pin.function);
     update_pin(pin.pin, value & 1u, fn, 1);
@@ -729,7 +899,7 @@ void Cpu::complete_adc(size_t index) {
     if (rt.channel < a.channel_pins.size()) {
         const uint32_t pin = a.channel_pins[rt.channel];
         if (pin != UINT32_MAX && pin < model_.pins.size())
-            sample = shm_.pins()[pin].value.load();
+            sample = pins_[pin].value.load();
     }
     const RegisterDesc* drd = model_.find_register(a.space, a.data);
     const uint8_t dw = drd ? drd->width : 8;
@@ -757,7 +927,7 @@ void Cpu::complete_tkey(size_t index) {
         std::min<size_t>(t.channel_pins.size(), t.data_bits);
     for (size_t ch = 0; ch < max_channels; ++ch) {
         const uint32_t pin = t.channel_pins[ch];
-        if (pin < model_.pins.size() && (shm_.pins()[pin].value.load() & 1u))
+        if (pin < model_.pins.size() && (pins_[pin].value.load() & 1u))
             data |= (1u << ch);
     }
     write_reg8(t.space, t.datl, data & 0xFFu);
@@ -771,6 +941,7 @@ void Cpu::complete_tkey(size_t index) {
 
 void Cpu::advance_peripherals(VirtTime delta) {
     now_ += delta;
+    if (periph_active_ == 0) return;
 
     for (size_t i = 0; i < uart_rt_.size(); ++i) {
         UartRuntime& rt = uart_rt_[i];
@@ -820,10 +991,19 @@ void Cpu::advance_peripherals(VirtTime delta) {
             drive_pwm_pin(pp, en ? (rt.counter < duty ? 1u : 0u) : 0u);
         }
     }
+
+    uint32_t active = 0;
+    for (const auto& rt : uart_rt_) if (rt.tx_pending) active |= 1u;
+    for (const auto& rt : spi_rt_) if (rt.busy) active |= 2u;
+    for (const auto& rt : pwm_rt_) if (rt.started) active |= 4u;
+    for (const auto& rt : adc_rt_) if (rt.busy) active |= 8u;
+    for (const auto& rt : tkey_rt_) if (rt.busy) active |= 16u;
+    periph_active_ = active;
 }
 
 void Cpu::poll_bus_in() {
-    DebugEvent ev{};
+    if (!stream_.host_attached() || stream_.in_empty()) return;
+    DebugEvent ev;
     while (stream_.pop_in(ev)) {
         if (ev.type == DebugEventType::Bus) {
             const BusEvent& b = ev.u.bus;
@@ -946,20 +1126,28 @@ void Cpu::poll_bus_in() {
 }
 
 void Cpu::poll_external_pins() {
-    PinState* pins = shm_.pins();
+    if (pin_poll_skip_ != 0) {
+        --pin_poll_skip_;
+        return;
+    }
+    pin_poll_skip_ = pin_poll_interval_ - 1;
+    PinState* pins = pins_;
+    const bool slow = (pin_slow_counter_++ & 0x3Fu) == 0;
     uint32_t gpio_enable = 0;
-    if (model_.gpio_irq.present) {
+    if (slow && model_.gpio_irq.present) {
         gpio_enable = read_reg8(model_.gpio_irq.enable_space,
                                 model_.gpio_irq.enable_reg);
     }
 
     for (size_t i = 0; i < model_.pins.size(); ++i) {
         const PinDesc& pd = model_.pins[i];
-        const uint32_t value = pins[i].value.load();
-        const uint32_t function = pins[i].function.load();
-        const uint32_t direction = pins[i].direction.load();
-
+        const uint32_t value = pins[i].value.load(std::memory_order_relaxed);
         if (i < last_pin_value_.size() && value != last_pin_value_[i]) {
+            // 值变化时才读取 function/direction，保证事件和 GPIO 边沿准确。
+            const uint32_t function =
+                pins[i].function.load(std::memory_order_relaxed);
+            const uint32_t direction =
+                pins[i].direction.load(std::memory_order_relaxed);
             DebugEvent ev{};
             ev.time = now_;
             ev.type = DebugEventType::Pin;
@@ -967,17 +1155,29 @@ void Cpu::poll_external_pins() {
                                 direction, 1};
             if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
             last_pin_value_[i] = value;
+            last_pin_function_[i] = function;
+            last_pin_direction_[i] = direction;
 
             // 外部驱动的输入引脚变化 -> GPIO 边沿中断。
             if (model_.gpio_irq.present && direction == 0 && function == 0 &&
                 pd.source_reg != 0 && model_.gpio_irq.enable_bits != 0) {
+                const uint32_t en = slow
+                    ? gpio_enable
+                    : read_reg8(model_.gpio_irq.enable_space,
+                                model_.gpio_irq.enable_reg);
                 const uint32_t bit =
                     (pd.number - model_.gpio_irq.enable_bit_base) %
                     model_.gpio_irq.enable_bits;
-                if (gpio_enable & (1u << bit))
+                if (en & (1u << bit))
                     set_irq_pending(model_.gpio_irq.irq);
             }
+            continue;
         }
+
+        // function/direction 是配置类状态，低频扫描即可。
+        if (!slow) continue;
+        const uint32_t function = pins[i].function.load(std::memory_order_relaxed);
+        const uint32_t direction = pins[i].direction.load(std::memory_order_relaxed);
         if (i < last_pin_function_.size() &&
             function != last_pin_function_[i]) {
             DebugEvent ev{};
@@ -1024,6 +1224,7 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         } else {
             rt.tx_pending = true;
             rt.tx_ready = now_ + u.tx_cycles;
+            periph_active_ |= 1u;
         }
     }
 
@@ -1042,6 +1243,7 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         rt.responded = false;
         rt.xfer_id = next_bus_xfer_id_++;
         rt.ready_at = now_ + s.xfer_cycles;
+        periph_active_ |= 2u;
 
         uint32_t stat = read_reg8(s.space, s.stat);
         stat &= static_cast<uint32_t>(~(1u << s.done_bit));
@@ -1062,6 +1264,7 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         rt.channel = static_cast<uint8_t>(
             (read_reg8(a.space, a.cfg) >> a.channel_shift) & a.channel_mask);
         rt.ready_at = now_ + a.conversion_cycles;
+        periph_active_ |= 8u;
 
         uint32_t ctrl = value;
         ctrl &= static_cast<uint32_t>(~(1u << a.start_bit));
@@ -1076,6 +1279,7 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         if (!(value & (1u << t.start_bit)) || rt.busy) continue;
         rt.busy = true;
         rt.ready_at = now_ + t.scan_cycles;
+        periph_active_ |= 16u;
         uint32_t ctrl = value & static_cast<uint32_t>(~(1u << t.start_bit));
         write_reg8(t.space, t.ctrl, ctrl);
     }
@@ -1084,6 +1288,7 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         const PwmDesc& p = model_.pwms[i];
         if (space != p.space || addr != p.ctrl) continue;
         pwm_rt_[i].started = true;
+        periph_active_ |= 4u;
     }
 
     if (model_.usb.present && space == model_.usb.space) {
@@ -1154,15 +1359,15 @@ void Cpu::write_usb_byte(uint8_t ep, uint32_t offset, uint8_t value) {
 }
 
 void Cpu::check_reset_pin() {
-    auto* ctl = shm_.control();
-    if (ctl->reset_pin.load() != 0) {
+    auto* ctl = ctl_;
+    if (ctl->reset_pin.load(std::memory_order_relaxed) != 0) {
         MCUS_INFO("reset pin asserted");
         reset();
         ctl->reset_pin.store(0);
     }
 }
 bool Cpu::check_breakpoint() {
-    auto* bh = shm_.breakpoint_header();
+    auto* bh = breakpoint_header_;
     if (bh->hit.load(std::memory_order_relaxed) != 0) return true;
 
     // pc 没变，不重复查（Resume 后跳过当前断点）
@@ -1177,7 +1382,7 @@ bool Cpu::check_breakpoint() {
 
     uint32_t pc = regs_.pc;
     bool sorted = bh->sorted.load(std::memory_order_relaxed) != 0;
-    auto* slots = shm_.breakpoints();
+    auto* slots = breakpoint_slots_;
 
     bool hit = false;
     if (sorted) {
@@ -1212,31 +1417,34 @@ bool Cpu::check_breakpoint() {
         bh->hit.store(1, std::memory_order_relaxed);
         bh->hit_addr.store(pc, std::memory_order_relaxed);
         paused_.store(true);
-        shm_.control()->status.store(static_cast<uint32_t>(ControlStatus::Paused));
+        ctl_->status.store(static_cast<uint32_t>(ControlStatus::Paused));
         MCUS_INFO("breakpoint hit at 0x" + std::to_string(pc));
         return true;
     }
     return false;
 }
 VirtTime Cpu::step() {
-    if (halted_.load()) return 0;
-    if (paused_.load()) return 0;
+    if (halted_.load(std::memory_order_relaxed)) return 0;
+    if (paused_.load(std::memory_order_relaxed)) return 0;
 
     check_reset_pin();
     poll_bus_in();
     poll_external_pins();
     // 同步总线等待外部响应时冻结 CPU/虚拟时间，由 Simulator 让出线程。
-    if (waiting_for_bus()) return 0;
+    if ((periph_active_ & 2u) && waiting_for_bus()) return 0;
     check_inject_slots();
     if (check_breakpoint()) return 0;
     if (check_interrupt()) return model_.cycles_per_instruction;
 
     ExecResult r = isa_->execute(regs_, *this);
-    shm_.control()->pc.store(regs_.pc, std::memory_order_relaxed);
+    if (last_reported_pc_ != regs_.pc) {
+        ctl_->pc.store(regs_.pc, std::memory_order_relaxed);
+        last_reported_pc_ = regs_.pc;
+    }
     if (r.halted) {
         halted_.store(true);
-        shm_.control()->halted.store(1);
-        shm_.control()->status.store(static_cast<uint32_t>(ControlStatus::Halted));
+        ctl_->halted.store(1);
+        ctl_->status.store(static_cast<uint32_t>(ControlStatus::Halted));
     }
     return r.cycles == 0 ? model_.cycles_per_instruction : r.cycles;
 }

@@ -66,6 +66,7 @@ EventStream::EventStream(const std::string& shm_name, size_t capacity,
         header_->backpressure_in.store(0);
         header_->version.store(kStreamVersion);
         header_->host_attached.store(0);
+        capacity_ = capacity;
         attached_ = false;
         return;
     }
@@ -104,6 +105,7 @@ EventStream::EventStream(const std::string& shm_name, size_t capacity,
         base_ = nullptr;
         throw std::runtime_error("incompatible event stream: " + shm_name);
     }
+    capacity_ = static_cast<size_t>(cap);
     in_slots_ = out_slots_ + cap;
     attached_ = true;
     header_->host_attached.store(1, std::memory_order_release);
@@ -119,7 +121,7 @@ EventStream::~EventStream() {
 bool EventStream::push(const DebugEvent& ev) {
     uint64_t head = header_->out_head.load(std::memory_order_relaxed);
     uint64_t tail = header_->out_tail.load(std::memory_order_acquire);
-    uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
+    uint64_t cap = capacity_;
     if (head - tail >= cap) {
         header_->backpressure_out.store(1, std::memory_order_release);
         return false;
@@ -136,7 +138,7 @@ bool EventStream::pop(DebugEvent& ev) {
     uint64_t tail = header_->out_tail.load(std::memory_order_relaxed);
     uint64_t head = header_->out_head.load(std::memory_order_acquire);
     if (tail == head) return false;
-    uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
+    uint64_t cap = capacity_;
     ev = out_slots_[tail % cap];
     header_->out_tail.store(tail + 1, std::memory_order_release);
     return true;
@@ -145,12 +147,13 @@ bool EventStream::pop(DebugEvent& ev) {
 bool EventStream::push_in(const DebugEvent& ev) {
     uint64_t head = header_->in_head.load(std::memory_order_relaxed);
     uint64_t tail = header_->in_tail.load(std::memory_order_acquire);
-    uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
+    uint64_t cap = capacity_;
     if (head - tail >= cap) {
         header_->backpressure_in.store(1, std::memory_order_release);
         return false;
     }
 
+    header_->host_attached.store(1, std::memory_order_relaxed);
     DebugEvent copy = ev;
     copy.seq = header_->seq.fetch_add(1, std::memory_order_relaxed);
     in_slots_[head % cap] = copy;
@@ -162,7 +165,7 @@ bool EventStream::pop_in(DebugEvent& ev) {
     uint64_t tail = header_->in_tail.load(std::memory_order_relaxed);
     uint64_t head = header_->in_head.load(std::memory_order_acquire);
     if (tail == head) return false;
-    uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
+    uint64_t cap = capacity_;
     ev = in_slots_[tail % cap];
     header_->in_tail.store(tail + 1, std::memory_order_release);
     return true;
@@ -171,7 +174,7 @@ bool EventStream::pop_in(DebugEvent& ev) {
 bool EventStream::full() const {
     uint64_t head = header_->out_head.load(std::memory_order_acquire);
     uint64_t tail = header_->out_tail.load(std::memory_order_acquire);
-    uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
+    uint64_t cap = capacity_;
     return (head - tail) >= cap;
 }
 
@@ -194,7 +197,7 @@ size_t EventStream::size() const {
 bool EventStream::in_full() const {
     uint64_t head = header_->in_head.load(std::memory_order_acquire);
     uint64_t tail = header_->in_tail.load(std::memory_order_acquire);
-    uint64_t cap = header_->capacity.load(std::memory_order_relaxed);
+    uint64_t cap = capacity_;
     return (head - tail) >= cap;
 }
 
@@ -227,7 +230,7 @@ void EventStream::clear_in_backpressure() {
 }
 
 bool EventStream::host_attached() const {
-    return header_->host_attached.load(std::memory_order_acquire) != 0;
+    return header_->host_attached.load(std::memory_order_relaxed) != 0;
 }
 
 void EventStream::mark_host_attached() {

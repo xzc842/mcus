@@ -1,6 +1,6 @@
 # 外部程序与 mcus 的交互
 
-> **注意**：事件流已升级为双向 `DebugEvent` 流，记录类型为 `Mmio / Pin / Bus / Irq / Usb`；同一个共享内存对象里包含 out/in 两个 SPSC 环，`EventStream` 支持 `create=false` 的 attach 模式，以及 `push_in()`/`pop_in()` 反向收发。以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
+> **说明**：事件流是双向 `DebugEvent` 流，记录类型为 `Mmio / Pin / Bus / Irq / Usb`；同一个共享内存对象里包含 out/in 两个 SPSC 环，`EventStream` 支持 `create=false` 的 attach 模式，以及 `push_in()`/`pop_in()` 反向收发。以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
 
 外部程序不属于 mcus 项目，通过 POSIX 共享内存和事件流与模拟器交互。**外部程序不链接 `libmcus_core` 的模拟器部分，只通过共享内存和事件流读写；可以链接 `libmcus_core` 的 `SharedMemory`/`EventStream` 类简化访问。**
 
@@ -376,7 +376,7 @@ struct Header {
     atomic_uint32_t backpressure_out;
     atomic_uint32_t backpressure_in;
     atomic_uint32_t version;       // 3
-    atomic_uint32_t host_attached; // attach 时置 1
+    atomic_uint32_t host_attached; // attach 或 push_in 时置 1
 };
 ```
 
@@ -424,6 +424,9 @@ while (1) {
 **建议的启动顺序：** 配置 `start_paused = true` 启动 `mcus` → 外部程序 attach 事件流和共享内存 →
 外部程序写 `command=Resume` → 固件开始执行。这样 SPI 第一次传输时 `host_attached` 已经为 1，
 模拟器会等待外部 MISO 响应，而不是用默认 `0xFF` 抢跑。
+
+模拟器只在 `host_attached=1` 时轮询 in 环；`attach()` 和 `push_in()` 都会置位，因此外部程序
+只要正常写回总线响应/接收数据，不需要额外设置。
 
 `type=Irq` 的 `IrqEvent{number, pending}` 在每次进入中断时写入 out 环；`type=Mmio/Pin` 分别记录寄存器访问和引脚变化。
 
@@ -498,7 +501,7 @@ struct UsbEvent {
   token、`UIF_TRANSFER` 和 `U_TOG_OK`。
 - 发 `token=In`、`len=N`：模拟器从端点 TX 区读取实际长度（由 `len_reg` 决定），回一个
   `token=In, handshake=Ack` 的 `UsbEvent` 到 out 环；取走后 mcus 清零 TX 长度。
-- 没有新 TX 长度时，`token=In` 返回 0 字节，不再重复返回旧缓冲。
+- 没有新 TX 长度时，`token=In` 返回 0 字节，不重复发送上一包。
 - 模拟器在固件写 `UEPn_CTRL` 时发 `token=EpReady`，外部主机可据此安排 IN/OUT。
 
 端点缓冲地址由模型显式描述：
@@ -644,20 +647,28 @@ int main() {
 }
 ```
 
-## 15. 注意事项
+## 15. 兼容性说明
+
+- 共享内存的 `ControlBlock`、`PinState`、`Inject*`、`Breakpoint*`、事件流 `Header` 和 `DebugEvent` 布局未变，直接 mmap 的外部程序不需要改布局；
+- 使用 C++ `SharedMemory`/`EventStream` 类的外部程序需要按当前头文件重新编译（类新增了私有缓存成员，类大小变了）；
+- `EventStream::push_in()` 会置 `host_attached`；模拟器只在 `host_attached=1` 时轮询 in 环。直接 mmap 写 in 环的外部程序必须自己把 `Header.host_attached` 置 1；
+- 无 `gpio_irq` 的模型引脚采样间隔为 16 步，外部引脚注入最多延迟 16 条指令。
+
+## 16. 注意事项
 
 1. **`SharedMemory` 构造函数 `create=true` 会 `memset` + `reset_all`，外部程序必须 `create=false`，否则重置模拟器状态；**
-2. **`dump_shm` 已用 `create=false`，外部程序参考 `tools/dump_shm.cpp`；**
+2. **`dump_shm` 使用 `create=false`，外部程序参考 `tools/dump_shm.cpp`；**
 3. **`atomic` 操作跨进程，外部程序用 `std::atomic` 的 `load`/`store`，或者 `__atomic_load_n`/`__atomic_store_n`；**
 4. **事件流有 out/in 两个环：外部程序 `pop()` 消费 out、`push_in()` 生产 in；两个环的 `head`/`tail` 都是 `uint64_t`，满时分别置 `backpressure_out`/`backpressure_in`；**
 5. **中断位图 `bm[i] |= (1 << b)`，外部程序写，模拟器 `check_interrupt` 读，`enter_interrupt` 清；**
 6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序可写 `value` 注入电平，模拟器端口读会把 `value` 叠加回寄存器；`direction=0` 时输入引脚变化还会触发 GPIO 边沿中断；**
-7. **断点区 `bh->count`/`sorted`/`min_addr`/`max_addr` 写完后，`hit=0`，`Resume`，模拟器 `check_breakpoint` 二分查；**
-8. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点；**
-9. **SPI 是同步总线：外部程序 attach 事件流后，模拟器会冻结 CPU 等待 `SpiXfer(ToMcu)` 响应；建议 `start_paused=true`，attach 后先 `Resume`，避免第一次传输用默认 MISO 抢跑；**
-10. **`host_attached` 是粘滞标志，进程退出后不会自动清零；长时间无响应由 `simulator.bus_wait_timeout_ms` 兜底。**
+7. **没有 `gpio_irq` 的模型默认每 16 步采样一次引脚，外部输入变化最多延迟 16 条指令；需要逐指令 GPIO 边沿时请在模型中配置 `gpio_irq`；**
+8. **断点区 `bh->count`/`sorted`/`min_addr`/`max_addr` 写完后，`hit=0`，`Resume`，模拟器 `check_breakpoint` 二分查；**
+9. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点；**
+10. **SPI 是同步总线：外部程序 attach 事件流后，模拟器会冻结 CPU 等待 `SpiXfer(ToMcu)` 响应；建议 `start_paused=true`，attach 后先 `Resume`，避免第一次传输用默认 MISO 抢跑；**
+11. **`host_attached` 是粘滞标志，进程退出后不会自动清零；长时间无响应由 `simulator.bus_wait_timeout_ms` 兜底。**
 
-## 16. 参考
+## 17. 参考
 
 - `include/mcus/shared_memory.h`：`ControlBlock`/`PinState`/`InjectSlot`/`BreakpointHeader`/`BreakpointSlot`/`SharedMemory`；
 - `include/mcus/event_stream.h`：双向 `Header`/`EventStream`；

@@ -32,7 +32,7 @@ namespace mcus {
 //   void                    mcus_isa_destroy(InstructionSet* isa);
 //
 // 模拟器先校验 ABI 版本和 arch，再调用 mcus_isa_create 创建指令集实例。
-inline constexpr uint32_t kIsaAbiVersion = 1;
+inline constexpr uint32_t kIsaAbiVersion = 2;
 
 inline constexpr const char* kIsaAbiVersionSymbol = "mcus_isa_abi_version";
 inline constexpr const char* kIsaArchSymbol    = "mcus_isa_arch";

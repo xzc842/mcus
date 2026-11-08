@@ -27,6 +27,14 @@ namespace {
 class Isa8051 : public InstructionSet {
 public:
     explicit Isa8051(const Model& model) : model_(model) {
+        code_space_ = model.arch_desc.reset_space.empty()
+                          ? SpaceId("code")
+                          : model.arch_desc.reset_space;
+        iram_space_ = "iram";
+        sfr_space_ = model.arch_desc.sp_reg_space.empty()
+                         ? sfr_space_
+                         : model.arch_desc.sp_reg_space;
+        xram_space_ = "xram";
         for (const auto& e : model.isa_extensions)
             extensions_.insert(e);
     }
@@ -87,8 +95,8 @@ public:
             case 0x06: case 0x07: {
                 uint8_t ri = op & 0x01;
                 uint8_t addr = reg_read(bus, ri);
-                bus.write8("iram", addr,
-                           static_cast<uint8_t>(bus.read8("iram", addr) + 1));
+                bus.write8(iram_space_, addr,
+                           static_cast<uint8_t>(bus.read8(iram_space_, addr) + 1));
                 pc += 1;
                 break;
             }
@@ -163,8 +171,8 @@ public:
             case 0x16: case 0x17: {
                 uint8_t ri = op & 0x01;
                 uint8_t addr = reg_read(bus, ri);
-                bus.write8("iram", addr,
-                           static_cast<uint8_t>(bus.read8("iram", addr) - 1));
+                bus.write8(iram_space_, addr,
+                           static_cast<uint8_t>(bus.read8(iram_space_, addr) - 1));
                 pc += 1;
                 break;
             }
@@ -212,7 +220,7 @@ public:
 
             case 0x26: case 0x27: {
                 uint8_t ri = op & 0x01;
-                add_a(bus, bus.read8("iram", reg_read(bus, ri)), false);
+                add_a(bus, bus.read8(iram_space_, reg_read(bus, ri)), false);
                 pc += 1;
                 break;
             }
@@ -264,7 +272,7 @@ public:
 
             case 0x36: case 0x37: {
                 uint8_t ri = op & 0x01;
-                add_a(bus, bus.read8("iram", reg_read(bus, ri)), true);
+                add_a(bus, bus.read8(iram_space_, reg_read(bus, ri)), true);
                 pc += 1;
                 break;
             }
@@ -319,7 +327,7 @@ public:
             case 0x46: case 0x47: {
                 uint8_t ri = op & 0x01;
                 write_acc(bus, static_cast<uint8_t>(
-                    read_acc(bus) | bus.read8("iram", reg_read(bus, ri))));
+                    read_acc(bus) | bus.read8(iram_space_, reg_read(bus, ri))));
                 pc += 1;
                 break;
             }
@@ -375,7 +383,7 @@ public:
                         case 0x56: case 0x57: {
                 uint8_t ri = op & 0x01;
                 write_acc(bus, static_cast<uint8_t>(
-                    read_acc(bus) & bus.read8("iram", reg_read(bus, ri))));
+                    read_acc(bus) & bus.read8(iram_space_, reg_read(bus, ri))));
                 pc += 1;
                 break;
             }
@@ -431,7 +439,7 @@ public:
             case 0x66: case 0x67: {
                 uint8_t ri = op & 0x01;
                 write_acc(bus, static_cast<uint8_t>(
-                    read_acc(bus) ^ bus.read8("iram", reg_read(bus, ri))));
+                    read_acc(bus) ^ bus.read8(iram_space_, reg_read(bus, ri))));
                 pc += 1;
                 break;
             }
@@ -483,7 +491,7 @@ public:
             case 0x76: case 0x77: {
                 uint8_t ri = op & 0x01;
                 uint8_t imm = fetch(bus, pc + 1);
-                bus.write8("iram", reg_read(bus, ri), imm);
+                bus.write8(iram_space_, reg_read(bus, ri), imm);
                 pc += 2;
                 break;
             }
@@ -512,20 +520,20 @@ public:
 
             case 0x83: {
                 Addr a = static_cast<Addr>(pc + 1 + read_acc(bus));
-                write_acc(bus, bus.read8("code", a));
+                write_acc(bus, bus.read8(code_space_, a));
                 pc += 1;
                 break;
             }
 
             case 0x84: {
                 uint8_t a = read_acc(bus);
-                uint8_t b = bus.read8("sfr", 0xF0);
+                uint8_t b = bus.read8(sfr_space_, 0xF0);
                 if (b == 0) {
                     write_cy(bus, 1);
                     write_ov(bus, 1);
                 } else {
                     write_acc(bus, static_cast<uint8_t>(a / b));
-                    bus.write8("sfr", 0xF0, static_cast<uint8_t>(a % b));
+                    bus.write8(sfr_space_, 0xF0, static_cast<uint8_t>(a % b));
                     write_cy(bus, 0);
                     write_ov(bus, 0);
                 }
@@ -544,7 +552,7 @@ public:
             case 0x86: case 0x87: {
                 uint8_t ri = op & 0x01;
                 uint8_t dst = fetch(bus, pc + 1);
-                direct_write(bus, dst, bus.read8("iram", reg_read(bus, ri)));
+                direct_write(bus, dst, bus.read8(iram_space_, reg_read(bus, ri)));
                 pc += 2;
                 break;
             }
@@ -574,7 +582,7 @@ public:
             case 0x93: {
                 uint16_t dptr = (read_dph(bus) << 8) | read_dpl(bus);
                 Addr a = static_cast<Addr>(dptr + read_acc(bus));
-                write_acc(bus, bus.read8("code", a));
+                write_acc(bus, bus.read8(code_space_, a));
                 pc += 1;
                 break;
             }
@@ -589,7 +597,7 @@ public:
 
             case 0x96: case 0x97: {
                 uint8_t ri = op & 0x01;
-                subb_a(bus, bus.read8("iram", reg_read(bus, ri)));
+                subb_a(bus, bus.read8(iram_space_, reg_read(bus, ri)));
                 pc += 1;
                 break;
             }
@@ -626,9 +634,9 @@ public:
 
             case 0xA4: {
                 uint16_t r = static_cast<uint16_t>(read_acc(bus)) *
-                             bus.read8("sfr", 0xF0);
+                             bus.read8(sfr_space_, 0xF0);
                 write_acc(bus, static_cast<uint8_t>(r & 0xFF));
-                bus.write8("sfr", 0xF0, static_cast<uint8_t>(r >> 8));
+                bus.write8(sfr_space_, 0xF0, static_cast<uint8_t>(r >> 8));
                 write_cy(bus, 0);
                 write_ov(bus, (r > 0xFF) ? 1 : 0);
                 pc += 1;
@@ -640,15 +648,15 @@ public:
                     res.halted = true;
                     break;
                 }
-                uint8_t xbus = bus.read8("sfr", 0xA2);
+                uint8_t xbus = bus.read8(sfr_space_, 0xA2);
                 uint8_t saved_dps = xbus & 0x01;
-                bus.write8("sfr", 0xA2, static_cast<uint8_t>(xbus | 0x01));
+                bus.write8(sfr_space_, 0xA2, static_cast<uint8_t>(xbus | 0x01));
                 uint16_t dptr = (read_dph(bus) << 8) | read_dpl(bus);
-                bus.write8("xram", dptr, read_acc(bus));
+                bus.write8(xram_space_, dptr, read_acc(bus));
                 dptr = static_cast<uint16_t>(dptr + 1);
                 write_dph(bus, static_cast<uint8_t>(dptr >> 8));
                 write_dpl(bus, static_cast<uint8_t>(dptr & 0xFF));
-                bus.write8("sfr", 0xA2,
+                bus.write8(sfr_space_, 0xA2,
                            static_cast<uint8_t>((xbus & ~0x01) | saved_dps));
                 pc += 1;
                 break;
@@ -657,7 +665,7 @@ public:
             case 0xA6: case 0xA7: {
                 uint8_t ri = op & 0x01;
                 uint8_t src = fetch(bus, pc + 1);
-                bus.write8("iram", reg_read(bus, ri), direct_read(bus, src));
+                bus.write8(iram_space_, reg_read(bus, ri), direct_read(bus, src));
                 pc += 2;
                 break;
             }
@@ -714,7 +722,7 @@ public:
                 uint8_t ri = op & 0x01;
                 uint8_t imm = fetch(bus, pc + 1);
                 int8_t rel = static_cast<int8_t>(fetch(bus, pc + 2));
-                uint8_t v = bus.read8("iram", reg_read(bus, ri));
+                uint8_t v = bus.read8(iram_space_, reg_read(bus, ri));
                 write_cy(bus, v < imm ? 1 : 0);
                 if (v != imm)
                     pc = static_cast<uint16_t>(pc + 3 + rel);
@@ -775,8 +783,8 @@ public:
                 uint8_t ri = op & 0x01;
                 uint8_t addr = reg_read(bus, ri);
                 uint8_t a = read_acc(bus);
-                uint8_t d = bus.read8("iram", addr);
-                bus.write8("iram", addr, a);
+                uint8_t d = bus.read8(iram_space_, addr);
+                bus.write8(iram_space_, addr, a);
                 write_acc(bus, d);
                 pc += 1;
                 break;
@@ -846,10 +854,10 @@ public:
                 uint8_t ri = op & 0x01;
                 uint8_t addr = reg_read(bus, ri);
                 uint8_t a = read_acc(bus);
-                uint8_t d = bus.read8("iram", addr);
+                uint8_t d = bus.read8(iram_space_, addr);
                 uint8_t new_a = static_cast<uint8_t>((a & 0xF0) | (d & 0x0F));
                 uint8_t new_d = static_cast<uint8_t>((d & 0xF0) | (a & 0x0F));
-                bus.write8("iram", addr, new_d);
+                bus.write8(iram_space_, addr, new_d);
                 write_acc(bus, new_a);
                 pc += 1;
                 break;
@@ -860,7 +868,7 @@ public:
                 uint8_t rn = static_cast<uint8_t>(op & 0x07);
                 int8_t rel = static_cast<int8_t>(fetch(bus, pc + 1));
                 uint8_t base = reg_bank_base(bus);
-                uint8_t before = bus.read8("iram", static_cast<Addr>(base + rn));
+                uint8_t before = bus.read8(iram_space_, static_cast<Addr>(base + rn));
                 uint8_t v = static_cast<uint8_t>(before - 1);
                 reg_write(bus, rn, v);
                 if (v != 0)
@@ -872,16 +880,16 @@ public:
 
             case 0xE0: {
                 uint16_t dptr = (read_dph(bus) << 8) | read_dpl(bus);
-                write_acc(bus, bus.read8("xram", dptr));
+                write_acc(bus, bus.read8(xram_space_, dptr));
                 pc += 1;
                 break;
             }
 
             case 0xE2: case 0xE3: {
                 uint8_t ri = op & 0x01;
-                uint8_t p2 = bus.read8("sfr", 0xA0);
+                uint8_t p2 = bus.read8(sfr_space_, 0xA0);
                 uint16_t addr = (static_cast<uint16_t>(p2) << 8) | reg_read(bus, ri);
-                write_acc(bus, bus.read8("xram", addr));
+                write_acc(bus, bus.read8(xram_space_, addr));
                 pc += 1;
                 break;
             }
@@ -897,7 +905,7 @@ public:
 
             case 0xE6: case 0xE7: {
                 uint8_t ri = op & 0x01;
-                write_acc(bus, bus.read8("iram", reg_read(bus, ri)));
+                write_acc(bus, bus.read8(iram_space_, reg_read(bus, ri)));
                 pc += 1;
                 break;
             }
@@ -911,16 +919,16 @@ public:
 
             case 0xF0: {
                 uint16_t dptr = (read_dph(bus) << 8) | read_dpl(bus);
-                bus.write8("xram", dptr, read_acc(bus));
+                bus.write8(xram_space_, dptr, read_acc(bus));
                 pc += 1;
                 break;
             }
 
             case 0xF2: case 0xF3: {
                 uint8_t ri = op & 0x01;
-                uint8_t p2 = bus.read8("sfr", 0xA0);
+                uint8_t p2 = bus.read8(sfr_space_, 0xA0);
                 uint16_t addr = (static_cast<uint16_t>(p2) << 8) | reg_read(bus, ri);
-                bus.write8("xram", addr, read_acc(bus));
+                bus.write8(xram_space_, addr, read_acc(bus));
                 pc += 1;
                 break;
             }
@@ -940,7 +948,7 @@ public:
 
             case 0xF6: case 0xF7: {
                 uint8_t ri = op & 0x01;
-                bus.write8("iram", reg_read(bus, ri), read_acc(bus));
+                bus.write8(iram_space_, reg_read(bus, ri), read_acc(bus));
                 pc += 1;
                 break;
             }
@@ -964,10 +972,14 @@ public:
 
 private:
     const Model& model_;
+    SpaceId code_space_;
+    SpaceId iram_space_;
+    SpaceId sfr_space_;
+    SpaceId xram_space_;
     std::unordered_set<std::string> extensions_;
 
     uint8_t fetch(MemoryBus& bus, Addr addr) {
-        return bus.read8("code", addr);
+        return bus.fetch8(addr);
     }
     void push(MemoryBus& bus, uint8_t v) {
         uint8_t sp = static_cast<uint8_t>(
@@ -984,65 +996,65 @@ private:
         return v;
     }
 
-    uint8_t read_acc(MemoryBus& bus) { return bus.read8("sfr", 0xE0); }
+    uint8_t read_acc(MemoryBus& bus) { return bus.read8(sfr_space_, 0xE0); }
 
     void write_acc(MemoryBus& bus, uint8_t v) {
-        bus.write8("sfr", 0xE0, v);
+        bus.write8(sfr_space_, 0xE0, v);
         uint8_t p = 0;
         for (int i = 0; i < 8; ++i) p ^= ((v >> i) & 1);
-        uint8_t psw = bus.read8("sfr", 0xD0);
+        uint8_t psw = bus.read8(sfr_space_, 0xD0);
         psw = static_cast<uint8_t>((psw & 0xFE) | p);
-        bus.write8("sfr", 0xD0, psw);
+        bus.write8(sfr_space_, 0xD0, psw);
     }
 
-    uint8_t read_dpl(MemoryBus& bus) { return bus.read8("sfr", 0x82); }
-    uint8_t read_dph(MemoryBus& bus) { return bus.read8("sfr", 0x83); }
-    void write_dpl(MemoryBus& bus, uint8_t v) { bus.write8("sfr", 0x82, v); }
-    void write_dph(MemoryBus& bus, uint8_t v) { bus.write8("sfr", 0x83, v); }
+    uint8_t read_dpl(MemoryBus& bus) { return bus.read8(sfr_space_, 0x82); }
+    uint8_t read_dph(MemoryBus& bus) { return bus.read8(sfr_space_, 0x83); }
+    void write_dpl(MemoryBus& bus, uint8_t v) { bus.write8(sfr_space_, 0x82, v); }
+    void write_dph(MemoryBus& bus, uint8_t v) { bus.write8(sfr_space_, 0x83, v); }
 
-    bool read_cy(MemoryBus& bus) { return (bus.read8("sfr", 0xD0) & 0x80) != 0; }
+    bool read_cy(MemoryBus& bus) { return (bus.read8(sfr_space_, 0xD0) & 0x80) != 0; }
 
     void write_cy(MemoryBus& bus, bool v) {
-        uint8_t psw = bus.read8("sfr", 0xD0);
+        uint8_t psw = bus.read8(sfr_space_, 0xD0);
         psw = static_cast<uint8_t>((psw & 0x7F) | (v ? 0x80 : 0));
-        bus.write8("sfr", 0xD0, psw);
+        bus.write8(sfr_space_, 0xD0, psw);
     }
 
-    bool read_ac(MemoryBus& bus) { return (bus.read8("sfr", 0xD0) & 0x40) != 0; }
+    bool read_ac(MemoryBus& bus) { return (bus.read8(sfr_space_, 0xD0) & 0x40) != 0; }
 
     void write_ac(MemoryBus& bus, bool v) {
-        uint8_t psw = bus.read8("sfr", 0xD0);
+        uint8_t psw = bus.read8(sfr_space_, 0xD0);
         psw = static_cast<uint8_t>((psw & 0xBF) | (v ? 0x40 : 0));
-        bus.write8("sfr", 0xD0, psw);
+        bus.write8(sfr_space_, 0xD0, psw);
     }
 
     void write_ov(MemoryBus& bus, int v) {
-        uint8_t psw = bus.read8("sfr", 0xD0);
+        uint8_t psw = bus.read8(sfr_space_, 0xD0);
         psw = static_cast<uint8_t>((psw & 0xFB) | (v ? 0x04 : 0));
-        bus.write8("sfr", 0xD0, psw);
+        bus.write8(sfr_space_, 0xD0, psw);
     }
 
     uint8_t reg_bank_base(MemoryBus& bus) {
-        uint8_t psw = bus.read8("sfr", 0xD0);
+        uint8_t psw = bus.read8(sfr_space_, 0xD0);
         return static_cast<uint8_t>((psw & 0x18) >> 3) * 8;
     }
 
     uint8_t reg_read(MemoryBus& bus, uint8_t rn) {
-        return bus.read8("iram", static_cast<Addr>(reg_bank_base(bus) + rn));
+        return bus.read8(iram_space_, static_cast<Addr>(reg_bank_base(bus) + rn));
     }
 
     void reg_write(MemoryBus& bus, uint8_t rn, uint8_t v) {
-        bus.write8("iram", static_cast<Addr>(reg_bank_base(bus) + rn), v);
+        bus.write8(iram_space_, static_cast<Addr>(reg_bank_base(bus) + rn), v);
     }
 
     uint8_t direct_read(MemoryBus& bus, uint8_t addr) {
-        if (addr < 0x80) return bus.read8("iram", addr);
-        return bus.read8("sfr", addr);
+        if (addr < 0x80) return bus.read8(iram_space_, addr);
+        return bus.read8(sfr_space_, addr);
     }
 
     void direct_write(MemoryBus& bus, uint8_t addr, uint8_t v) {
-        if (addr < 0x80) bus.write8("iram", addr, v);
-        else bus.write8("sfr", addr, v);
+        if (addr < 0x80) bus.write8(iram_space_, addr, v);
+        else bus.write8(sfr_space_, addr, v);
     }
 
     bool bit_read(MemoryBus& bus, uint8_t bit_addr) {
@@ -1093,7 +1105,7 @@ private:
         regs.sp = model.arch_desc.initial_sp;
 
         const SpaceId sp_space = model.arch_desc.sp_reg_space.empty()
-                                     ? SpaceId("sfr")
+                                     ? sfr_space_
                                      : model.arch_desc.sp_reg_space;
         const Addr sp_reg = model.arch_desc.sp_reg != 0
                                 ? model.arch_desc.sp_reg
@@ -1106,12 +1118,12 @@ private:
     void save_context(CpuRegisters& regs, MemoryBus& bus,
                       const Model& model) override {
         const RegisterDesc* ip = model.find_register_by_name("IP");
-        const SpaceId ip_space = ip ? ip->space : SpaceId("sfr");
+        const SpaceId ip_space = ip ? ip->space : sfr_space_;
         const Addr ip_addr = ip ? ip->addr : 0xB8;
         ip_stack_.push_back(bus.read8(ip_space, ip_addr));
 
         const SpaceId sp_space = model.arch_desc.sp_reg_space.empty()
-                                     ? SpaceId("sfr")
+                                     ? sfr_space_
                                      : model.arch_desc.sp_reg_space;
         const Addr sp_reg = model.arch_desc.sp_reg != 0
                                 ? model.arch_desc.sp_reg
@@ -1133,7 +1145,7 @@ private:
         (void)regs;
         if (ip_stack_.empty()) return;
         const RegisterDesc* ip = model.find_register_by_name("IP");
-        const SpaceId ip_space = ip ? ip->space : SpaceId("sfr");
+        const SpaceId ip_space = ip ? ip->space : sfr_space_;
         const Addr ip_addr = ip ? ip->addr : 0xB8;
         bus.write8(ip_space, ip_addr, ip_stack_.back());
         ip_stack_.pop_back();
@@ -1142,12 +1154,12 @@ private:
     bool resolve_bit_addr(const Model& model, Addr bit_addr, SpaceId& space,
                           Addr& byte_addr, uint8_t& bit) const override {
         if (bit_addr < 0x80) {
-            space = "iram";
+            space = iram_space_;
             byte_addr = 0x20 + (bit_addr / 8);
             bit = static_cast<uint8_t>(bit_addr % 8);
             return model.find_region(space, byte_addr) != nullptr;
         }
-        space = "sfr";
+        space = sfr_space_;
         byte_addr = bit_addr & 0xF8;
         bit = static_cast<uint8_t>(bit_addr & 0x07);
         return model.find_register(space, byte_addr) != nullptr;
