@@ -89,3 +89,9 @@ add_test(NAME bench_arm COMMAND mcus_bench
     --isa ${CMAKE_BINARY_DIR}/libmcus_isa_arm.so
     --steps 20000 --warmup 100 --repeat 1)
 set_tests_properties(bench_arm PROPERTIES LABELS bench)
+
+add_executable(test_stc90c51 test_stc90c51.cpp)
+target_link_libraries(test_stc90c51 PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_stc90c51 PRIVATE
+    MCUS_TEST_STC90C51_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stc90c51.json")
+add_test(NAME stc90c51 COMMAND test_stc90c51)

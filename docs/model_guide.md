@@ -9,6 +9,7 @@ models/
 ├── ch552g.json
 ├── dummy.json
 ├── generic.json
+├── stc90c51.json
 ├── stm32f103c8t6.json
 └── schema.md
 ```

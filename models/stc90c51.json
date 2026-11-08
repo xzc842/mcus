@@ -1,0 +1,1157 @@
+{
+  "name": "stc90c51",
+  "description": "STC90C51RC, 8051 core, 4KB flash, 256B iRAM + 256B xRAM",
+  "arch": "8051",
+  "crystal_hz": 11059200,
+  "cycles_per_instruction": 1,
+  "reset_vector": 0,
+  "reset_space": "code",
+  "initial_sp": 7,
+  "sp_space": "iram",
+  "isa_extensions": [],
+  "arch_desc": {
+    "global_irq_enable": {
+      "space": "sfr",
+      "reg": 168,
+      "bit": 7,
+      "present": true
+    },
+    "irq_push_bytes": 2,
+    "stack_grows_down": false,
+    "fast_spaces": [
+      "code",
+      "iram",
+      "xram"
+    ],
+    "reset_space": "code",
+    "reset_vector": 0,
+    "sp_space": "iram",
+    "initial_sp": 7,
+    "sp_reg": 129,
+    "sp_reg_space": "sfr",
+    "has_pc_reg": false
+  },
+  "regions": [
+    {
+      "name": "code",
+      "space": "code",
+      "base": 0,
+      "size": 4096,
+      "is_mmio": false,
+      "read_only": true
+    },
+    {
+      "name": "iram",
+      "space": "iram",
+      "base": 0,
+      "size": 256,
+      "is_mmio": false
+    },
+    {
+      "name": "sfr",
+      "space": "sfr",
+      "base": 128,
+      "size": 128,
+      "is_mmio": true
+    },
+    {
+      "name": "xram",
+      "space": "xram",
+      "base": 0,
+      "size": 256,
+      "is_mmio": false,
+      "addr_mask": 255
+    }
+  ],
+  "registers": [
+    {
+      "name": "P0",
+      "space": "sfr",
+      "addr": 128,
+      "width": 8,
+      "semantics": "write_trigger",
+      "reset_value": 255
+    },
+    {
+      "name": "SP",
+      "space": "sfr",
+      "addr": 129,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 7
+    },
+    {
+      "name": "DPL",
+      "space": "sfr",
+      "addr": 130,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "DPH",
+      "space": "sfr",
+      "addr": 131,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "PCON",
+      "space": "sfr",
+      "addr": 135,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TCON",
+      "space": "sfr",
+      "addr": 136,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TMOD",
+      "space": "sfr",
+      "addr": 137,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TL0",
+      "space": "sfr",
+      "addr": 138,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TL1",
+      "space": "sfr",
+      "addr": 139,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TH0",
+      "space": "sfr",
+      "addr": 140,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TH1",
+      "space": "sfr",
+      "addr": 141,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AUXR",
+      "space": "sfr",
+      "addr": 142,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "P1",
+      "space": "sfr",
+      "addr": 144,
+      "width": 8,
+      "semantics": "write_trigger",
+      "reset_value": 255
+    },
+    {
+      "name": "SCON",
+      "space": "sfr",
+      "addr": 152,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SBUF",
+      "space": "sfr",
+      "addr": 153,
+      "width": 8,
+      "semantics": "fifo",
+      "reset_value": 0
+    },
+    {
+      "name": "P2",
+      "space": "sfr",
+      "addr": 160,
+      "width": 8,
+      "semantics": "write_trigger",
+      "reset_value": 255
+    },
+    {
+      "name": "AUXR1",
+      "space": "sfr",
+      "addr": 162,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "IE",
+      "space": "sfr",
+      "addr": 168,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SADDR",
+      "space": "sfr",
+      "addr": 169,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "P3",
+      "space": "sfr",
+      "addr": 176,
+      "width": 8,
+      "semantics": "write_trigger",
+      "reset_value": 255
+    },
+    {
+      "name": "IPH",
+      "space": "sfr",
+      "addr": 183,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "IP",
+      "space": "sfr",
+      "addr": 184,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SADEN",
+      "space": "sfr",
+      "addr": 185,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "XICON",
+      "space": "sfr",
+      "addr": 192,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "T2CON",
+      "space": "sfr",
+      "addr": 200,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "T2MOD",
+      "space": "sfr",
+      "addr": 201,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCAP2L",
+      "space": "sfr",
+      "addr": 202,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCAP2H",
+      "space": "sfr",
+      "addr": 203,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TL2",
+      "space": "sfr",
+      "addr": 204,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TH2",
+      "space": "sfr",
+      "addr": 205,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "PSW",
+      "space": "sfr",
+      "addr": 208,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ACC",
+      "space": "sfr",
+      "addr": 224,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "WDT_CONTR",
+      "space": "sfr",
+      "addr": 225,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ISP_DATA",
+      "space": "sfr",
+      "addr": 226,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ISP_ADDRH",
+      "space": "sfr",
+      "addr": 227,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ISP_ADDRL",
+      "space": "sfr",
+      "addr": 228,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ISP_CMD",
+      "space": "sfr",
+      "addr": 229,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ISP_TRIG",
+      "space": "sfr",
+      "addr": 230,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ISP_CONTR",
+      "space": "sfr",
+      "addr": 231,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "P4",
+      "space": "sfr",
+      "addr": 232,
+      "width": 8,
+      "semantics": "write_trigger",
+      "reset_value": 255
+    },
+    {
+      "name": "B",
+      "space": "sfr",
+      "addr": 240,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    }
+  ],
+  "pins": [
+    {
+      "name": "P0.0",
+      "number": 0,
+      "functions": [
+        "gpio",
+        "ad0"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 0,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 0
+    },
+    {
+      "name": "P0.1",
+      "number": 1,
+      "functions": [
+        "gpio",
+        "ad1"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 1,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 1
+    },
+    {
+      "name": "P0.2",
+      "number": 2,
+      "functions": [
+        "gpio",
+        "ad2"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 2,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 2
+    },
+    {
+      "name": "P0.3",
+      "number": 3,
+      "functions": [
+        "gpio",
+        "ad3"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 3,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 3
+    },
+    {
+      "name": "P0.4",
+      "number": 4,
+      "functions": [
+        "gpio",
+        "ad4"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 4,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 4
+    },
+    {
+      "name": "P0.5",
+      "number": 5,
+      "functions": [
+        "gpio",
+        "ad5"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 5,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 5
+    },
+    {
+      "name": "P0.6",
+      "number": 6,
+      "functions": [
+        "gpio",
+        "ad6"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 6,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 6
+    },
+    {
+      "name": "P0.7",
+      "number": 7,
+      "functions": [
+        "gpio",
+        "ad7"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 128,
+      "source_bit": 7,
+      "input_space": "sfr",
+      "input_reg": 128,
+      "input_bit": 7
+    },
+    {
+      "name": "P1.0",
+      "number": 8,
+      "functions": [
+        "gpio",
+        "t2"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 0,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 0
+    },
+    {
+      "name": "P1.1",
+      "number": 9,
+      "functions": [
+        "gpio",
+        "t2ex"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 1,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 1
+    },
+    {
+      "name": "P1.2",
+      "number": 10,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 2,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 2
+    },
+    {
+      "name": "P1.3",
+      "number": 11,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 3,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 3
+    },
+    {
+      "name": "P1.4",
+      "number": 12,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 4,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 4
+    },
+    {
+      "name": "P1.5",
+      "number": 13,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 5,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 5
+    },
+    {
+      "name": "P1.6",
+      "number": 14,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 6,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 6
+    },
+    {
+      "name": "P1.7",
+      "number": 15,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 144,
+      "source_bit": 7,
+      "input_space": "sfr",
+      "input_reg": 144,
+      "input_bit": 7
+    },
+    {
+      "name": "P2.0",
+      "number": 16,
+      "functions": [
+        "gpio",
+        "a8"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 0,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 0
+    },
+    {
+      "name": "P2.1",
+      "number": 17,
+      "functions": [
+        "gpio",
+        "a9"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 1,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 1
+    },
+    {
+      "name": "P2.2",
+      "number": 18,
+      "functions": [
+        "gpio",
+        "a10"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 2,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 2
+    },
+    {
+      "name": "P2.3",
+      "number": 19,
+      "functions": [
+        "gpio",
+        "a11"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 3,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 3
+    },
+    {
+      "name": "P2.4",
+      "number": 20,
+      "functions": [
+        "gpio",
+        "a12"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 4,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 4
+    },
+    {
+      "name": "P2.5",
+      "number": 21,
+      "functions": [
+        "gpio",
+        "a13"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 5,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 5
+    },
+    {
+      "name": "P2.6",
+      "number": 22,
+      "functions": [
+        "gpio",
+        "a14"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 6,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 6
+    },
+    {
+      "name": "P2.7",
+      "number": 23,
+      "functions": [
+        "gpio",
+        "a15"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 160,
+      "source_bit": 7,
+      "input_space": "sfr",
+      "input_reg": 160,
+      "input_bit": 7
+    },
+    {
+      "name": "P3.0",
+      "number": 24,
+      "functions": [
+        "gpio",
+        "rxd"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 0,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 0
+    },
+    {
+      "name": "P3.1",
+      "number": 25,
+      "functions": [
+        "gpio",
+        "txd"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 1,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 1
+    },
+    {
+      "name": "P3.2",
+      "number": 26,
+      "functions": [
+        "gpio",
+        "int0"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 2,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 2
+    },
+    {
+      "name": "P3.3",
+      "number": 27,
+      "functions": [
+        "gpio",
+        "int1"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 3,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 3
+    },
+    {
+      "name": "P3.4",
+      "number": 28,
+      "functions": [
+        "gpio",
+        "t0"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 4,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 4
+    },
+    {
+      "name": "P3.5",
+      "number": 29,
+      "functions": [
+        "gpio",
+        "t1"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 5,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 5
+    },
+    {
+      "name": "P3.6",
+      "number": 30,
+      "functions": [
+        "gpio",
+        "wr"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 6,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 6
+    },
+    {
+      "name": "P3.7",
+      "number": 31,
+      "functions": [
+        "gpio",
+        "rd"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 176,
+      "source_bit": 7,
+      "input_space": "sfr",
+      "input_reg": 176,
+      "input_bit": 7
+    },
+    {
+      "name": "P4.0",
+      "number": 32,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 232,
+      "source_bit": 0,
+      "input_space": "sfr",
+      "input_reg": 232,
+      "input_bit": 0
+    },
+    {
+      "name": "P4.1",
+      "number": 33,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 232,
+      "source_bit": 1,
+      "input_space": "sfr",
+      "input_reg": 232,
+      "input_bit": 1
+    },
+    {
+      "name": "P4.2",
+      "number": 34,
+      "functions": [
+        "gpio",
+        "int3"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 232,
+      "source_bit": 2,
+      "input_space": "sfr",
+      "input_reg": 232,
+      "input_bit": 2
+    },
+    {
+      "name": "P4.3",
+      "number": 35,
+      "functions": [
+        "gpio",
+        "int2"
+      ],
+      "reset_function": 0,
+      "source_space": "sfr",
+      "source_reg": 232,
+      "source_bit": 3,
+      "input_space": "sfr",
+      "input_reg": 232,
+      "input_bit": 3
+    },
+    {
+      "name": "RST",
+      "number": 36,
+      "functions": [
+        "control"
+      ],
+      "reset_function": 0
+    },
+    {
+      "name": "ALE",
+      "number": 37,
+      "functions": [
+        "control"
+      ],
+      "reset_function": 0
+    },
+    {
+      "name": "PSEN",
+      "number": 38,
+      "functions": [
+        "control"
+      ],
+      "reset_function": 0
+    },
+    {
+      "name": "EA",
+      "number": 39,
+      "functions": [
+        "control"
+      ],
+      "reset_function": 0
+    },
+    {
+      "name": "XTAL1",
+      "number": 40,
+      "functions": [
+        "control"
+      ],
+      "reset_function": 0
+    },
+    {
+      "name": "XTAL2",
+      "number": 41,
+      "functions": [
+        "control"
+      ],
+      "reset_function": 0
+    }
+  ],
+  "interrupts": [
+    {
+      "name": "INT0",
+      "number": 0,
+      "vector_addr": 3,
+      "vector_space": "code",
+      "enable_reg": 168,
+      "enable_space": "sfr",
+      "enable_bit": 0,
+      "pending_reg": 136,
+      "pending_space": "sfr",
+      "pending_bit": 1
+    },
+    {
+      "name": "TMR0",
+      "number": 1,
+      "vector_addr": 11,
+      "vector_space": "code",
+      "enable_reg": 168,
+      "enable_space": "sfr",
+      "enable_bit": 1,
+      "pending_reg": 136,
+      "pending_space": "sfr",
+      "pending_bit": 5
+    },
+    {
+      "name": "INT1",
+      "number": 2,
+      "vector_addr": 19,
+      "vector_space": "code",
+      "enable_reg": 168,
+      "enable_space": "sfr",
+      "enable_bit": 2,
+      "pending_reg": 136,
+      "pending_space": "sfr",
+      "pending_bit": 3
+    },
+    {
+      "name": "TMR1",
+      "number": 3,
+      "vector_addr": 27,
+      "vector_space": "code",
+      "enable_reg": 168,
+      "enable_space": "sfr",
+      "enable_bit": 3,
+      "pending_reg": 136,
+      "pending_space": "sfr",
+      "pending_bit": 7
+    },
+    {
+      "name": "UART0",
+      "number": 4,
+      "vector_addr": 35,
+      "vector_space": "code",
+      "enable_reg": 168,
+      "enable_space": "sfr",
+      "enable_bit": 4,
+      "pending_reg": 152,
+      "pending_space": "sfr",
+      "pending_bit": 1,
+      "pending_mask": 3,
+      "clear_pending": false
+    },
+    {
+      "name": "TMR2",
+      "number": 5,
+      "vector_addr": 43,
+      "vector_space": "code",
+      "enable_reg": 168,
+      "enable_space": "sfr",
+      "enable_bit": 5,
+      "pending_reg": 200,
+      "pending_space": "sfr",
+      "pending_bit": 7,
+      "clear_pending": false
+    },
+    {
+      "name": "INT2",
+      "number": 6,
+      "vector_addr": 51,
+      "vector_space": "code",
+      "enable_reg": 192,
+      "enable_space": "sfr",
+      "enable_bit": 2,
+      "pending_reg": 192,
+      "pending_space": "sfr",
+      "pending_bit": 1
+    },
+    {
+      "name": "INT3",
+      "number": 7,
+      "vector_addr": 59,
+      "vector_space": "code",
+      "enable_reg": 192,
+      "enable_space": "sfr",
+      "enable_bit": 6,
+      "pending_reg": 192,
+      "pending_space": "sfr",
+      "pending_bit": 5
+    }
+  ],
+  "timers": [
+    {
+      "name": "TIMER0",
+      "counter": {
+        "bits": 16,
+        "lo_reg": 138,
+        "hi_reg": 140,
+        "reg_space": "sfr",
+        "reload_lo_reg": 138,
+        "reload_hi_reg": 140
+      },
+      "enable": {
+        "reg": 136,
+        "bit": 4
+      },
+      "overflow": {
+        "reg": 136,
+        "bit": 5
+      },
+      "irq": 1,
+      "overflow_action": "isa"
+    },
+    {
+      "name": "TIMER1",
+      "counter": {
+        "bits": 16,
+        "lo_reg": 139,
+        "hi_reg": 141,
+        "reg_space": "sfr",
+        "reload_lo_reg": 139,
+        "reload_hi_reg": 141
+      },
+      "enable": {
+        "reg": 136,
+        "bit": 6
+      },
+      "overflow": {
+        "reg": 136,
+        "bit": 7
+      },
+      "irq": 3,
+      "overflow_action": "isa"
+    },
+    {
+      "name": "TIMER2",
+      "counter": {
+        "bits": 16,
+        "lo_reg": 204,
+        "hi_reg": 205,
+        "reg_space": "sfr",
+        "reload_lo_reg": 202,
+        "reload_hi_reg": 203
+      },
+      "enable": {
+        "reg": 200,
+        "bit": 2
+      },
+      "overflow": {
+        "reg": 200,
+        "bit": 7
+      },
+      "irq": 5,
+      "overflow_action": "reload"
+    }
+  ],
+  "uarts": [
+    {
+      "name": "UART0",
+      "irq": 4,
+      "space": "sfr",
+      "ctrl": 152,
+      "data": 153,
+      "tx_flag_bit": 1,
+      "rx_flag_bit": 0,
+      "tx_cycles": 64,
+      "rx_fifo": 8
+    }
+  ]
+}

@@ -30,6 +30,7 @@ mcus/
 ├── models/
 │   ├── dummy.json
 │   ├── ch552g.json
+│   ├── stc90c51.json
 │   ├── stm32f103c8t6.json
 │   ├── generic.json
 │   └── schema.md
@@ -152,6 +153,11 @@ WCH CH552G 模型：
 - 引脚：P1.0–P1.7、P3.0–P3.7、RST，`source_reg` 指向对应端口 SFR，`direction_reg` 指向 `P1_DIR_PU`/`P3_DIR_PU`。
 - 外设：`uarts`（UART0/UART1）、`spis`（SPI0）、`pwms`、`adcs`、`tkeys`、`gpio_irq`、`usb`，寄存器/引脚/时序全部由模型描述。
 - ISA 扩展：`wch_dptr1_movx`，启用 0xA5 扩展指令。
+
+### `models/stc90c51.json`
+
+STC90C51RC：4KB Flash、256B iRAM + 256B xRAM、P0–P4、Timer0/1/2、UART0、INT0–INT3。
+详细限制见 `docs/stc90c51.md`。
 
 ### `models/stm32f103c8t6.json`
 
@@ -322,6 +328,10 @@ CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,00
 ### `tests/test_peripherals.cpp`
 
 用 CH552G 模型验证 UART0/UART1 收发与 TI/RI、SPI0 请求/响应、ADC 转换、TKEY 扫描、PWM 波形/中断、GPIO 输入采样/边沿中断、USB IN/OUT 包事件。
+
+### `tests/test_stc90c51.cpp`
+
+加载 STC90C51RC 模型，执行 `MOV P1,#0xAA`，验证 SFR 与引脚同步。
 
 ### `tests/test_timer.cpp`
 

@@ -52,6 +52,17 @@
 
 UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)，ARM/STM32 见 [docs/stm32.md](docs/stm32.md)。
 
+### STC90C51RC（8051）
+
+仓库提供 `models/stc90c51.json`：
+
+- 4KB Flash、256B iRAM + 256B xRAM；
+- P0–P4、Timer0/1/2、UART0、INT0–INT3；
+- IE/IP/IPH、XICON、AUXR/AUXR1、WDT_CONTR、ISP 寄存器；
+- UART/中断走 8051 ISA 与 `BusEvent`/中断机制。
+
+限制和 SFR 细节见 [docs/stc90c51.md](docs/stc90c51.md)。
+
 ### STM32F103C8T6（ARM Cortex-M3）
 
 仓库提供 `models/stm32f103c8t6.json` 和 `build/libmcus_isa_arm.so`：
