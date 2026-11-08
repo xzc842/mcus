@@ -38,36 +38,46 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(toml11)
 
+# ISA SDK：模型解析、日志、InstructionSet 默认钩子。
+# ISA 插件只链接这个静态库，不依赖 mcus_core/Simulator。
+add_library(mcus_isa_sdk STATIC
+    src/model.cpp
+    src/log.cpp
+    src/isa_base.cpp
+)
+target_include_directories(mcus_isa_sdk PUBLIC include)
+target_link_libraries(mcus_isa_sdk PUBLIC nlohmann_json::nlohmann_json)
+target_compile_options(mcus_isa_sdk PRIVATE -Wall -Wextra -Wpedantic)
+set_target_properties(mcus_isa_sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # 模拟器核心：不含具体架构 ISA，ISA 由 .so 动态加载
 add_library(mcus_core SHARED
-    src/model.cpp
     src/shared_memory.cpp
     src/event_stream.cpp
     src/cpu.cpp
     src/simulator.cpp
     src/config.cpp
-    src/isa_base.cpp
     src/isa_registry.cpp
     src/firmware.cpp
-    src/log.cpp
 )
 target_include_directories(mcus_core PUBLIC include)
 target_link_libraries(mcus_core
     PUBLIC
+        mcus_isa_sdk
         Threads::Threads
         nlohmann_json::nlohmann_json
         toml11::toml11
 )
 target_compile_options(mcus_core PRIVATE -Wall -Wextra -Wpedantic)
 
-# 8051 指令集：外部 ISA 动态库，入口符号见 include/mcus/isa_plugin.h
+# 8051 指令集：独立外部插件，入口符号见 include/mcus/isa_plugin.h
 add_library(mcus_isa_8051 SHARED src/isa_8051.cpp)
-target_link_libraries(mcus_isa_8051 PRIVATE mcus_core)
+target_link_libraries(mcus_isa_8051 PRIVATE mcus_isa_sdk)
 target_compile_options(mcus_isa_8051 PRIVATE -Wall -Wextra -Wpedantic)
 
-# ARM Cortex-M3 (Thumb/Thumb-2) 指令集，外部 ISA 动态库
+# ARM Cortex-M3 (Thumb/Thumb-2) 指令集，独立外部插件
 add_library(mcus_isa_arm SHARED src/isa_arm.cpp)
-target_link_libraries(mcus_isa_arm PRIVATE mcus_core)
+target_link_libraries(mcus_isa_arm PRIVATE mcus_isa_sdk)
 target_compile_options(mcus_isa_arm PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(mcus src/main.cpp)

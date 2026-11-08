@@ -17,7 +17,6 @@
 
 #include "mcus/instruction.h"
 #include "mcus/isa_plugin.h"
-#include "mcus/cpu.h"
 #include "mcus/log.h"
 
 #include <algorithm>

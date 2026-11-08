@@ -90,6 +90,15 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+ISA 可以单独构建，不构建主程序：
+
+```bash
+cmake --build build --target mcus_isa_8051
+cmake --build build --target mcus_isa_arm
+```
+
+详见 `docs/isa_build.md`。
+
 ### 运行
 
 ```bash

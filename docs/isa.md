@@ -60,7 +60,7 @@ CMake 侧参考 `CMakeLists.txt`：
 
 ```cmake
 add_library(mcus_isa_arm SHARED src/isa_arm.cpp)
-target_link_libraries(mcus_isa_arm PRIVATE mcus_core)
+target_link_libraries(mcus_isa_arm PRIVATE mcus_isa_sdk)
 ```
 
 `mcus` 会校验 ABI 版本和 `arch`，不一致直接报错退出。ABI 2 在 `MemoryBus` 中增加了 `fetch8`/`fetch16` 取指快路径，旧版 ISA 动态库需要重新编译。
@@ -271,7 +271,7 @@ TEST(IsaArm, Add) {
 
 - [ ] `src/isa_<arch>.cpp` 实现 `InstructionSet`；
 - [ ] 导出 `mcus_isa_arch` / `mcus_isa_create` / `mcus_isa_destroy` 三个 C ABI 符号；
-- [ ] CMake 中把 ISA 编译成 `SHARED` 库并链接 `mcus_core`；
+- [ ] CMake 中把 ISA 编译成 `SHARED` 库并链接 `mcus_isa_sdk`；
 - [ ] `models/<chip>.json` 的 `arch` 是 `<arch>`；
 - [ ] `models/<chip>.json` 的 `arch_desc` 填 `global_irq_enable`/`irq_push_bytes`/`fast_spaces`/`reset_space`/`sp_space` 等；
 - [ ] `Cpu`/`Simulator` 不改，所有芯片差异在 `arch_desc`；
@@ -292,6 +292,7 @@ TEST(IsaArm, Add) {
 - `src/isa_8051.cpp`：8051 完整指令集；
 - `src/isa_arm.cpp`：ARM Cortex-M3 Thumb/Thumb-2 子集；
 - `src/isa_registry.cpp` 的 `MinimalIsa`：最小 ISA；
+- [docs/isa_build.md](isa_build.md)：单独构建 ISA、SDK 和自定义插件；
 - `docs/external.md`：共享内存、双向事件流和总线/USB 契约；
 - `docs/stm32.md`：STM32F103C8T6 模型和 ARM ISA 使用说明；
 - `models/schema.md`：模型字段说明。

@@ -6,7 +6,7 @@
 
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
 - **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器/外设结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
-- **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 和 `ARM Cortex-M3` 是外部库。
+- **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 和 `ARM Cortex-M3` 是外部库；单独构建 ISA 见 [docs/isa_build.md](docs/isa_build.md)。
 - **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
 - **统一双向事件流**：MMIO / GPIO / 总线 / 中断 / USB 都进入同一个 `DebugEvent` 共享内存对象，带全局 `seq`，保证顺序；out 环给外部程序消费，in 环把总线响应/UART RX/USB 包送回模拟器；支持 attach 模式，不重置队列。
 - **GPIO 事件化**：引脚只在状态变化时发 PIN 事件，外部程序/插件不轮询引脚；当前值仍可通过 `PinState` 读取。
@@ -133,6 +133,7 @@ ctest --test-dir build --output-on-failure
 - `build/libmcus_isa_8051.so`：8051 ISA 动态库（外部加载）
 - `build/libmcus_isa_arm.so`：ARM Cortex-M3 Thumb/Thumb-2 ISA 动态库（外部加载）
 - `build/mcus_bench`：性能基准工具
+- `build/libmcus_isa_sdk.a`：ISA SDK 静态库
 
 ### 运行
 

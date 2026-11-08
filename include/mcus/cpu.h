@@ -29,13 +29,6 @@
 
 namespace mcus {
 
-struct CpuRegisters {
-    uint32_t r[32]{};
-    uint32_t pc = 0;
-    uint32_t sp = 0;
-    uint32_t flags = 0;
-};
-
 class Cpu : public MemoryBus {
 public:
     Cpu(const Model& model, SharedMemory& shm, EventStream& stream);

@@ -17,7 +17,6 @@
 // InstructionSet 的默认架构行为。具体架构（8051/ARM/RISC-V）可以覆盖。
 
 #include "mcus/instruction.h"
-#include "mcus/cpu.h"
 
 namespace mcus {
 

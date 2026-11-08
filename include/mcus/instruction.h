@@ -24,7 +24,12 @@
 
 namespace mcus {
 
-struct CpuRegisters;
+struct CpuRegisters {
+    uint32_t r[32]{};
+    uint32_t pc = 0;
+    uint32_t sp = 0;
+    uint32_t flags = 0;
+};
 
 struct ExecResult {
     VirtTime cycles = 0;
