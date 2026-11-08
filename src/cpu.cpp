@@ -143,6 +143,10 @@ void Cpu::load_firmware(const FirmwareImage& firmware) {
     std::memcpy(blk.data.data() + off, firmware.data.data(), n);
     MCUS_INFO("firmware loaded: " + std::to_string(n) + " bytes at " +
               tgt->space + ":0x" + std::to_string(load_addr));
+
+    // ARM 等架构的复位向量/初始 SP 来自固件镜像，必须加载后重新执行 ISA 复位。
+    isa_->reset(regs_, *this, model_);
+    shm_.control()->pc.store(regs_.pc);
 }
 
 void Cpu::load_firmware(const std::vector<uint8_t>& firmware) {
@@ -365,20 +369,49 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
     // 模型描述的寄存器副作用（由 on_write 动作描述）
     apply_actions(model_, shm_, reg->on_write);
 
+    // 动态位操作（如 BSRR/BRR）：用写入值的某些位去置位/清零目标寄存器。
+    for (const auto& bw : reg->bit_writes) {
+        if (bw.count == 0) continue;
+        uint32_t target = read_reg8(bw.space, bw.addr);
+        for (uint8_t i = 0; i < bw.count; ++i) {
+            if (!(value & (1u << (bw.source_bit + i)))) continue;
+            const uint32_t bit = 1u << (bw.target_bit + i);
+            if (bw.set) target |= bit;
+            else target &= ~bit;
+        }
+        write_reg8(bw.space, bw.addr, target);
+        sync_pins_for_register(bw.space, bw.addr, target);
+    }
+
+    sync_pins_for_register(space, addr, nv);
+
+    if (reg->semantics == RegSemantics::WriteTrigger ||
+        reg->semantics == RegSemantics::Fifo) {
+        emit_mmio_event(space, addr, value, width);
+    }
+
+    // 架构相关副作用（保留给外部 ISA 插件）
+    isa_->on_mmio_write(model_, *this, space, addr, nv, width);
+
+    // 外设（UART/SPI/PWM/ADC/TKEY/USB）的副作用
+    on_peripheral_mmio_write(space, addr, nv, width);
+}
+
+void Cpu::sync_pins_for_register(const SpaceId& space, Addr addr,
+                                  uint32_t value) {
     PinState* pins = shm_.pins();
     for (size_t i = 0; i < model_.pins.size(); ++i) {
         const PinDesc& pd = model_.pins[i];
         if (pd.source_space == space && pd.source_reg == addr &&
             pd.source_bit < 32) {
-            const uint32_t bv = (nv >> pd.source_bit) & 1u;
+            const uint32_t bv = (value >> pd.source_bit) & 1u;
             const uint32_t dir = pins[i].direction.load();
-            // 输入引脚由外部 PinState 决定电平；输出引脚才跟随锁存器。
-            const uint32_t pv = dir ? bv : pins[i].value.load();
-            update_pin(i, pv, pins[i].function.load(), dir);
+            // 端口锁存器写入总是同步到 PinState；外部输入可在读 IDR 时覆盖。
+            update_pin(i, bv, pins[i].function.load(), dir);
         }
         if (pd.has_direction && pd.direction_space == space &&
             pd.direction_reg == addr && pd.direction_bit < 32) {
-            const uint32_t dir = (nv >> pd.direction_bit) & 1u;
+            const uint32_t dir = (value >> pd.direction_bit) & 1u;
             uint32_t pv = pins[i].value.load();
             if (dir && pd.source_space == space) {
                 // 切换为输出时，把端口锁存器当前值同步到引脚。
@@ -392,17 +425,6 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
             update_pin(i, pv, pins[i].function.load(), dir);
         }
     }
-
-    if (reg->semantics == RegSemantics::WriteTrigger ||
-        reg->semantics == RegSemantics::Fifo) {
-        emit_mmio_event(space, addr, value, width);
-    }
-
-    // 架构相关副作用（保留给外部 ISA 插件）
-    isa_->on_mmio_write(model_, *this, space, addr, nv, width);
-
-    // 外设（UART/SPI/PWM/ADC/TKEY/USB）的副作用
-    on_peripheral_mmio_write(space, addr, nv, width);
 }
 
 uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
@@ -437,6 +459,18 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
                      ((pins[i].value.load() & 1u) << pd.source_bit);
             has_input = true;
         }
+    }
+    // 独立的输入寄存器（如 GPIO IDR）：把 PinState.value 叠加到对应位。
+    for (size_t i = 0; i < model_.pins.size(); ++i) {
+        const PinDesc& pd = model_.pins[i];
+        if (!pd.has_input || pd.input_space != space ||
+            pd.input_reg != addr || pd.input_bit >= 32) {
+            continue;
+        }
+        const uint32_t bit = 1u << pd.input_bit;
+        merged = (merged & ~bit) |
+                 ((pins[i].value.load() & 1u) << pd.input_bit);
+        has_input = true;
     }
     if (has_input) v = merged;
 
@@ -487,7 +521,9 @@ static uint32_t read_reg_by_model(const Model& model, SharedMemory& shm,
 bool Cpu::check_interrupt() {
     if (has_global_irq_enable_) {
         uint32_t v = read_reg_by_model(model_, shm_, global_irq_space_, global_irq_reg_);
-        if (!(v & (1u << global_irq_bit_))) return false;
+        bool enabled = (v & (1u << global_irq_bit_)) != 0;
+        if (model_.arch_desc.global_irq_enable.invert) enabled = !enabled;
+        if (!enabled) return false;
     }
 
     uint8_t* bitmap = shm_.interrupt_bitmap();
@@ -499,7 +535,10 @@ bool Cpu::check_interrupt() {
         size_t byte = irq.number / 8, bit = irq.number % 8;
         if (byte < shm_.interrupt_bitmap_size())
             bp = (bitmap[byte] & (1u << bit)) != 0;
-        if (!bp && !(pending & (1u << irq.pending_bit))) continue;
+        const uint32_t pending_bits = irq.pending_mask
+                                          ? irq.pending_mask
+                                          : (1u << irq.pending_bit);
+        if (!bp && !(pending & pending_bits)) continue;
 
         uint32_t enable = read_reg_by_model(model_, shm_, irq.enable_space, irq.enable_reg);
         if (!(enable & (1u << irq.enable_bit))) continue;
@@ -655,7 +694,9 @@ void Cpu::complete_spi(size_t index) {
     uint32_t stat = read_reg8(s.space, s.stat);
     stat |= (1u << s.done_bit);
     stat &= static_cast<uint32_t>(~(1u << s.busy_bit));
+    if (s.tx_ready_bit < 32) stat |= (1u << s.tx_ready_bit);
     write_reg8(s.space, s.stat, stat);
+    if (s.signal_irq_on_done) set_irq_pending(s.irq);
     rt.busy = false;
     rt.responded = false;
 }
@@ -694,10 +735,13 @@ void Cpu::complete_adc(size_t index) {
     if (dw < 32) sample &= ((1u << dw) - 1u);
     write_reg8(a.space, a.data, sample);
 
-    uint32_t ctrl = read_reg8(a.space, a.ctrl);
-    ctrl |= (1u << a.if_bit);
-    ctrl &= static_cast<uint32_t>(~(1u << a.busy_bit));
-    write_reg8(a.space, a.ctrl, ctrl);
+    const Addr flag_addr = a.status != 0 ? a.status : a.ctrl;
+    uint32_t flag = read_reg8(a.space, flag_addr);
+    flag |= (1u << a.if_bit);
+    if (a.busy_bit < 32)
+        flag &= static_cast<uint32_t>(~(1u << a.busy_bit));
+    write_reg8(a.space, flag_addr, flag);
+    if (a.signal_irq_on_done) set_irq_pending(a.irq);
     rt.busy = false;
 }
 
@@ -804,6 +848,7 @@ void Cpu::poll_bus_in() {
                     uint32_t ctrl = read_reg8(u.space, u.ctrl);
                     ctrl |= (1u << u.rx_flag_bit);
                     write_reg8(u.space, u.ctrl, ctrl);
+                    if (u.signal_irq_on_rx) set_irq_pending(u.irq);
                 }
             } else if (kind == BusEventKind::SpiXfer &&
                        b.direction ==
@@ -966,6 +1011,11 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         uint8_t byte = static_cast<uint8_t>(value);
         emit_bus_event(static_cast<uint32_t>(i), BusEventKind::UartTx,
                        BusDirection::ToHost, next_bus_xfer_id_++, &byte, 1);
+        if (u.clear_tx_on_write) {
+            uint32_t ctrl = read_reg8(u.space, u.ctrl);
+            ctrl &= static_cast<uint32_t>(~(1u << u.tx_flag_bit));
+            write_reg8(u.space, u.ctrl, ctrl);
+        }
         if (u.tx_cycles == 0) {
             uint32_t ctrl = read_reg8(u.space, u.ctrl);
             ctrl |= (1u << u.tx_flag_bit);
@@ -1008,12 +1058,13 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         AdcRuntime& rt = adc_rt_[i];
         if (!(value & (1u << a.start_bit)) || rt.busy) continue;
         rt.busy = true;
-        rt.channel = static_cast<uint8_t>((read_reg8(a.space, a.cfg) >> a.channel_shift) & a.channel_mask);
+        rt.channel = static_cast<uint8_t>(
+            (read_reg8(a.space, a.cfg) >> a.channel_shift) & a.channel_mask);
         rt.ready_at = now_ + a.conversion_cycles;
 
         uint32_t ctrl = value;
         ctrl &= static_cast<uint32_t>(~(1u << a.start_bit));
-        ctrl |= (1u << a.busy_bit);
+        if (a.busy_bit < 32) ctrl |= (1u << a.busy_bit);
         write_reg8(a.space, a.ctrl, ctrl);
     }
 
@@ -1047,6 +1098,17 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
 uint32_t Cpu::on_peripheral_mmio_read(const SpaceId& space, Addr addr,
                                       uint32_t value, uint8_t width) {
     (void)width;
+
+    for (size_t i = 0; i < model_.spis.size(); ++i) {
+        const SpiDesc& s = model_.spis[i];
+        if (space != s.space || addr != s.data) continue;
+        if (s.clear_done_on_read) {
+            uint32_t stat = read_reg8(s.space, s.stat);
+            stat &= static_cast<uint32_t>(~(1u << s.done_bit));
+            write_reg8(s.space, s.stat, stat);
+        }
+        return value;
+    }
 
     for (size_t i = 0; i < model_.uarts.size(); ++i) {
         const UartDesc& u = model_.uarts[i];

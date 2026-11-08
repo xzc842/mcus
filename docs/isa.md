@@ -290,6 +290,8 @@ TEST(IsaArm, Add) {
 ## 11. 参考
 
 - `src/isa_8051.cpp`：8051 完整指令集；
+- `src/isa_arm.cpp`：ARM Cortex-M3 Thumb/Thumb-2 子集；
 - `src/isa_registry.cpp` 的 `MinimalIsa`：最小 ISA；
 - `docs/external.md`：共享内存、双向事件流和总线/USB 契约；
+- `docs/stm32.md`：STM32F103C8T6 模型和 ARM ISA 使用说明；
 - `models/schema.md`：模型字段说明。

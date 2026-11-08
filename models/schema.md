@@ -10,7 +10,7 @@
 |---|---|---|---|
 | name | string | 是 | 芯片模型名 |
 | description | string | 否 | 说明 |
-| arch | string | 是 | 架构名，决定加载哪个 ISA 动态库 |
+| arch | string | 是 | 架构名，决定加载哪个 ISA 动态库（`mcus-minimal`/`8051`/`arm`/自定义） |
 | crystal_hz | number | 是 | 默认晶振频率（Hz），可被配置文件覆盖 |
 | cycles_per_instruction | number | 是 | 每条指令粗略虚拟耗时（晶振周期） |
 | reset_vector | number | 是 | 复位后 PC 值，必须落在某个非 MMIO 区域内 |

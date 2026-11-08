@@ -52,6 +52,16 @@ struct RegisterAction {
     uint32_t value = 0;
 };
 
+// 动态位操作：用于 BSRR/BRR 这类“写入值的某些位去置位/清零目标寄存器”的寄存器。
+struct BitWriteDesc {
+    SpaceId space;
+    Addr addr = 0;
+    uint8_t source_bit = 0;
+    uint8_t target_bit = 0;
+    uint8_t count = 1;
+    bool set = true;            // true=置位，false=清零
+};
+
 struct RegisterDesc {
     std::string name;
     SpaceId space;
@@ -64,6 +74,7 @@ struct RegisterDesc {
     std::vector<std::pair<Addr, uint8_t>> bit_aliases;
     std::vector<RegisterAction> on_write;
     std::vector<RegisterAction> on_read;
+    std::vector<BitWriteDesc> bit_writes;
 };
 
 struct PinDesc {
@@ -80,6 +91,12 @@ struct PinDesc {
     SpaceId direction_space;
     Addr direction_reg = 0;
     uint8_t direction_bit = 0;
+
+    // 输入寄存器（可选）：例如 GPIO IDR。读该寄存器时把 PinState.value 叠加进来。
+    bool has_input = false;
+    SpaceId input_space;
+    Addr input_reg = 0;
+    uint8_t input_bit = 0;
 };
 
 struct InterruptDesc {
@@ -94,6 +111,7 @@ struct InterruptDesc {
     Addr pending_reg = 0;
     SpaceId pending_space;
     uint8_t pending_bit = 0;
+    uint32_t pending_mask = 0;   // 非 0 时表示多个挂起位 OR（如 UART RI|TI）
     bool clear_pending = true;
 };
 
@@ -114,7 +132,11 @@ struct TimerDesc {
     struct FlagBit { Addr reg; uint8_t bit; SpaceId space; } overflow;
     uint32_t irq = 0;
     std::string overflow_action = "reload";
-    uint32_t prescaler = 1;         // 每 N 个虚拟周期计数一次
+    uint32_t prescaler = 1;         // 固定分频；prescaler_reg 非 0 时动态读取
+    Addr prescaler_reg = 0;         // 可选：分频寄存器（如 TIMx_PSC）
+    SpaceId prescaler_space;
+    uint32_t prescaler_scale = 1;   // 实际分频 = (prescaler_reg + 1) * scale
+    bool reload_compare = false;    // true=计到 reload 值就溢出（TIMx ARR / SysTick RVR）
 };
 
 // 串口：发送走 BusEvent(UartTx)，接收由外部 push_in(BusEvent(UartRx)) 注入。
@@ -128,6 +150,8 @@ struct UartDesc {
     uint8_t rx_flag_bit = 0;
     uint32_t tx_cycles = 0;     // 一个字节的虚拟发送时间；0=立即置发送标志
     uint32_t rx_fifo = 8;       // 接收 FIFO 深度
+    bool clear_tx_on_write = false; // 写数据时先清发送标志（如 USART TXE）
+    bool signal_irq_on_rx = false;  // RX 时置中断 pending（如 NVIC ISPR）
 };
 
 // SPI 主机：写 data 发 SpiXfer(ToHost)，外部回 SpiXfer(ToMcu) 后置 SPIF。
@@ -140,7 +164,10 @@ struct SpiDesc {
     Addr ctrl = 0;
     uint8_t done_bit = 4;
     uint8_t busy_bit = 7;
+    uint8_t tx_ready_bit = 0xFF; // 0xFF=没有 TXE 之类的发送就绪位
     uint32_t xfer_cycles = 8;
+    bool clear_done_on_read = false; // 读数据时清 done 标志（如 SPI RXNE）
+    bool signal_irq_on_done = false; // 完成时置中断 pending（如 NVIC ISPR）
 };
 
 struct PwmPinDesc {
@@ -172,12 +199,14 @@ struct AdcDesc {
     Addr ctrl = 0;
     Addr cfg = 0;
     Addr data = 0;
+    Addr status = 0;             // 状态寄存器；0=使用 ctrl
     uint8_t start_bit = 0;
     uint8_t if_bit = 5;
-    uint8_t busy_bit = 4;
+    uint8_t busy_bit = 0xFF;     // 0xFF=没有 busy 位
     uint32_t conversion_cycles = 96;
     uint32_t channel_mask = 0xFFFFFFFFu;  // cfg 寄存器里的通道字段掩码
     uint8_t channel_shift = 0;            // cfg 寄存器里的通道字段起始位
+    bool signal_irq_on_done = false;      // 转换完成后置中断 pending
     std::vector<uint32_t> channel_pins;   // 通道号 -> Model::pins 索引
 };
 
@@ -243,6 +272,7 @@ struct ArchDesc {
         Addr reg = 0;
         uint8_t bit = 0;
         bool present = false;
+        bool invert = false;        // true=位为 0 时全局中断开启（如 ARM PRIMASK）
     } global_irq_enable;
 
     // 中断压栈宽度（8051 压 2 字节 PC，ARM 压 4/8 字节，RISC-V 压 4 字节）

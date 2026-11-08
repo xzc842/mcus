@@ -105,6 +105,8 @@ private:
                          uint8_t width);
     void update_pin(size_t index, uint32_t value, uint32_t function,
                     uint32_t direction);
+    void sync_pins_for_register(const SpaceId& space, Addr addr,
+                                uint32_t value);
 
     // ---- 外设 / 总线事件 ----
     void poll_bus_in();

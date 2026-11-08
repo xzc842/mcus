@@ -50,6 +50,12 @@ add_executable(test_firmware test_firmware.cpp)
 target_link_libraries(test_firmware PRIVATE mcus_core)
 add_test(NAME firmware COMMAND test_firmware)
 
+add_executable(test_arm_isa test_arm_isa.cpp)
+target_link_libraries(test_arm_isa PRIVATE mcus_core mcus_isa_arm)
+target_compile_definitions(test_arm_isa PRIVATE
+    MCUS_TEST_ARM_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stm32f103c8t6.json")
+add_test(NAME arm_isa COMMAND test_arm_isa)
+
 add_executable(test_generic_model test_generic_model.cpp)
 target_link_libraries(test_generic_model PRIVATE mcus_core)
 target_compile_definitions(test_generic_model PRIVATE

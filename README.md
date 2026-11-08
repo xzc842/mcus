@@ -6,7 +6,7 @@
 
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
 - **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器/外设结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
-- **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 是外部库。
+- **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 和 `ARM Cortex-M3` 是外部库。
 - **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
 - **统一双向事件流**：MMIO / GPIO / 总线 / 中断 / USB 都进入同一个 `DebugEvent` 共享内存对象，带全局 `seq`，保证顺序；out 环给外部程序消费，in 环把总线响应/UART RX/USB 包送回模拟器；支持 attach 模式，不重置队列。
 - **GPIO 事件化**：引脚只在状态变化时发 PIN 事件，外部程序/插件不轮询引脚；当前值仍可通过 `PinState` 读取。
@@ -51,7 +51,19 @@
 - 两个环共用一个全局 `seq`，见 [include/mcus/types.h](include/mcus/types.h) 和 [include/mcus/event_stream.h](include/mcus/event_stream.h)。
 - 外部程序建议先 attach 事件流并 `Resume`，再让固件运行（`start_paused=true`）；SPI 在外部程序 attach 后会冻结 CPU 等待 MISO 响应，超时由 `bus_wait_timeout_ms` 控制。
 
-UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)。
+UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)，ARM/STM32 见 [docs/stm32.md](docs/stm32.md)。
+
+### STM32F103C8T6（ARM Cortex-M3）
+
+仓库提供 `models/stm32f103c8t6.json` 和 `build/libmcus_isa_arm.so`：
+
+- Flash 64KB @ `0x08000000`（只读）、SRAM 20KB @ `0x20000000`；
+- GPIOA/B/C（ODR/IDR/BSRR/BRR）、USART1/2/3、SPI1/2、TIM2/3/4、ADC1、NVIC、SCB、SysTick、RCC/FLASH/AFIO/EXTI；
+- NVIC `ISER/ICER/ISPR/ICPR`、PRIMASK（`CPSID/CPSIE`/`MRS/MSR`）、SysTick 异常和外部中断；
+- USART/SPI/ADC 仍走 BusEvent/UsbEvent 事件流，外部设备模型通过 `push_in()` 注入 RX/MISO 或读取 TX/MOSI 事件；
+- I2C/USB/CAN/DMA 目前只有寄存器骨架，没有协议引擎。
+
+详细地址、限制和编译示例见 [docs/stm32.md](docs/stm32.md)。
 
 ### 通用性
 
@@ -79,6 +91,7 @@ ctest --test-dir build --output-on-failure
 - `build/mcus`：模拟器主程序
 - `build/libmcus_core.so`：模拟器核心
 - `build/libmcus_isa_8051.so`：8051 ISA 动态库（外部加载）
+- `build/libmcus_isa_arm.so`：ARM Cortex-M3 Thumb/Thumb-2 ISA 动态库（外部加载）
 
 ### 运行
 
@@ -90,7 +103,7 @@ mcus --isa <isa.so> --model <model.json> --firmware <firmware> --config <config.
 
 四个启动参数：
 
-- **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so`；模拟器会校验库导出的 `arch` 与模型 `arch` 是否一致。
+- **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so` 或 `libmcus_isa_arm.so`；模拟器会校验库导出的 `arch` 与模型 `arch` 是否一致。
 - **模型文件**：描述芯片静态结构。
 - **固件**：加载到模型文件描述的非 MMIO 区域；支持 `.bin` 和 `.hex`/`.ihx`（Intel HEX）。
 - **配置文件**：共享内存名、事件流容量、晶振频率、日志级别等。

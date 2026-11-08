@@ -65,6 +65,11 @@ add_library(mcus_isa_8051 SHARED src/isa_8051.cpp)
 target_link_libraries(mcus_isa_8051 PRIVATE mcus_core)
 target_compile_options(mcus_isa_8051 PRIVATE -Wall -Wextra -Wpedantic)
 
+# ARM Cortex-M3 (Thumb/Thumb-2) 指令集，外部 ISA 动态库
+add_library(mcus_isa_arm SHARED src/isa_arm.cpp)
+target_link_libraries(mcus_isa_arm PRIVATE mcus_core)
+target_compile_options(mcus_isa_arm PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(mcus src/main.cpp)
 target_link_libraries(mcus PRIVATE mcus_core ${CMAKE_DL_LIBS})
 set_target_properties(mcus PROPERTIES

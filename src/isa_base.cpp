@@ -84,7 +84,10 @@ void InstructionSet::acknowledge_interrupt(const InterruptDesc& irq,
         case 16: value = bus.read16(irq.pending_space, irq.pending_reg); break;
         default: value = bus.read32(irq.pending_space, irq.pending_reg); break;
     }
-    value &= ~(1u << irq.pending_bit);
+    const uint32_t clear_mask = irq.pending_mask
+                                    ? irq.pending_mask
+                                    : (1u << irq.pending_bit);
+    value &= ~clear_mask;
     switch (width) {
         case 8:
             bus.write8(irq.pending_space, irq.pending_reg,

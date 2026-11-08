@@ -48,7 +48,7 @@ models/
 |---|---|---|
 | `name` | string | 芯片名，日志用 |
 | `description` | string | 描述 |
-| `arch` | string | ISA 名，`"8051"`/`"mcus-minimal"`/自定义 |
+| `arch` | string | ISA 名，`"8051"`/`"arm"`/`"mcus-minimal"`/自定义 |
 | `crystal_hz` | uint32 | 虚拟晶振频率（Hz） |
 | `cycles_per_instruction` | uint32 | 每条指令粗略虚拟耗时，默认 1 |
 | `reset_vector` | uint32 | 复位向量地址 |
@@ -85,7 +85,7 @@ models/
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `global_irq_enable` | object | 全局中断使能，`space`/`reg`/`bit`，`present=false` 表示无 |
+| `global_irq_enable` | object | 全局中断使能，`space`/`reg`/`bit`，`present=false` 表示无；`invert=true` 表示位为 0 时开中断（ARM PRIMASK） |
 | `irq_push_bytes` | uint8 | 中断压栈宽度，8051 是 2，ARM 是 4/8 |
 | `stack_grows_down` | bool | 栈增长方向，8051=false，ARM/RISC-V=true |
 | `fast_spaces` | string[] | 快速空间，`code`/`iram`/`xram`，别的架构 `flash`/`ram` |
@@ -93,7 +93,7 @@ models/
 | `reset_vector` | uint32 | 复位向量地址 |
 | `sp_space` | string | 栈空间 |
 | `initial_sp` | uint32 | 初始 SP |
-| `sp_reg` | uint32 | SP 寄存器地址（8051 是 `sfr` 0x81） |
+| `sp_reg` | uint32 | SP 寄存器地址（8051 是 `sfr` 0x81；ARM 用 `regs.sp` 时设 0） |
 | `sp_reg_space` | string | SP 寄存器所在空间 |
 | `has_pc_reg` | bool | 是否有外部 PC 寄存器（8051 没有） |
 
@@ -146,6 +146,7 @@ models/
 | `write_alias` | string | 写别名 |
 | `on_write` | array | 写后执行的通用动作，见下 |
 | `on_read` | array | 读后执行的通用动作，见下 |
+| `bit_writes` | array | 按写入值的位批量置位/清零目标寄存器，见下 |
 
 ### `on_write` / `on_read`：寄存器副作用
 
@@ -166,6 +167,18 @@ models/
 动作由 `Cpu` 在读写后直接写共享内存，不会再次触发引脚/事件/动作，适合状态位这类副作用。
 
 **UART/SPI/USB 不要用 `on_write` 模拟收发时序**：它们由 `uarts`/`spis`/`usb` 段描述，写数据寄存器会发总线事件，标志由虚拟时间推进后置位。
+
+### `bit_writes`：BSRR/BRR 这类批量位操作
+
+```json
+"bit_writes": [
+  { "space": "periph", "addr": 1073741836, "source_bit": 0,  "target_bit": 0, "count": 16, "action": "set" },
+  { "space": "periph", "addr": 1073741836, "source_bit": 16, "target_bit": 0, "count": 16, "action": "clear" }
+]
+```
+
+写入值的 `[source_bit, source_bit+count)` 位依次去置位/清零目标寄存器的 `[target_bit, target_bit+count)`。
+写入后会重新同步目标寄存器对应的引脚。STM32 的 `GPIOx_BSRR`/`GPIOx_BRR` 用这个描述。
 
 ### `semantics` 语义
 
@@ -211,10 +224,16 @@ models/
 | `direction_space` | string | 方向寄存器空间 |
 | `direction_reg` | uint32 | 方向寄存器地址 |
 | `direction_bit` | uint8 | 方向位 |
+| `input_space` | string | 输入寄存器空间（可选） |
+| `input_reg` | uint32 | 输入寄存器地址（如 GPIO IDR） |
+| `input_bit` | uint8 | 输入位 |
 
 **`source_space`/`source_reg`/`source_bit` 用于寄存器位到引脚表的同步。** **`P1` 写 `0xFE`，`P1.0` 的 `source_bit=0`，引脚表 `P1.0` 的 `value=0`。**
 
 **`direction_*` 可选：写方向寄存器时同步更新 `PinState.direction`，核心不假设方向寄存器叫什么。复位时 `PinState.value/direction` 会从 `source_reg`/`direction_reg` 的复位值同步，不再一律置 0。**
+
+**`input_*` 可选：读该寄存器时把对应 `PinState.value` 叠加到 `input_bit`，用于 GPIO IDR 这类输入寄存器。**
+
 
 ## 7. `interrupts`：中断
 
@@ -240,6 +259,7 @@ models/
 | `pending_reg` | uint32 | 挂起寄存器地址 |
 | `pending_space` | string | 挂起寄存器空间 |
 | `pending_bit` | uint8 | 挂起位 |
+| `pending_mask` | uint32 | 非 0 时多个挂起位 OR（如 UART RI\|TI） |
 | `clear_pending` | bool | 进中断时是否清挂起位，默认 `true` |
 
 **`clear_pending=false` 用于 UART/SPI/ADC/TKEY/PWM/GPIO/USB 这类“标志由软件清”的中断源。`enter_interrupt` 不清标志，但 `Cpu` 会记录中断服务状态，同号/同级中断在 `RETI` 前不会重入，因此不会出现中断风暴。**
@@ -278,7 +298,11 @@ models/
 | `overflow.space` | string | 溢出寄存器空间，默认 `counter.reg_space` |
 | `irq` | uint32 | 中断号 |
 | `overflow_action` | string | `isa`/`reload`/`reset` |
-| `prescaler` | uint32 | 每 N 个虚拟周期计数一次，默认 1 |
+| `prescaler` | uint32 | 固定分频，默认 1 |
+| `prescaler_reg` | uint32 | 可选动态分频寄存器（如 TIMx_PSC） |
+| `prescaler_space` | string | 分频寄存器空间 |
+| `prescaler_scale` | uint32 | 实际分频 = (PSC + 1) * scale |
+| `reload_compare` | bool | true=计到 reload 值就溢出（TIMx ARR / SysTick RVR） |
 
 **计数器有两种写法：**
 
@@ -313,8 +337,10 @@ models/
 | `ctrl` | 状态/控制寄存器，发送/接收标志所在 |
 | `data` | 数据寄存器 |
 | `tx_flag_bit` / `rx_flag_bit` | 发送完成/接收标志位 |
-| `tx_cycles` | 一个字节的虚拟发送时间；0=立即置 TI |
+| `tx_cycles` | 一个字节的虚拟发送时间；0=立即置发送标志 |
 | `rx_fifo` | 接收 FIFO 深度 |
+| `clear_tx_on_write` | 写数据时先清发送标志（如 USART TXE） |
+| `signal_irq_on_rx` | RX 时置中断 pending（如 NVIC ISPR） |
 
 写 `data` 会发 `BusEvent(UartTx)`；外部 `push_in(BusEvent(UartRx))` 会写入 FIFO、置接收标志。读 `data` 会取走 FIFO 数据并在 FIFO 空时清接收标志。旧字段名 `scon`/`sbuf`/`ti_bit`/`ri_bit` 仍作为别名兼容。
 
@@ -323,7 +349,8 @@ models/
 ```json
 "spis": [
   { "name": "SPI0", "irq": 6, "space": "sfr", "data": 249, "stat": 248,
-    "ctrl": 250, "done_bit": 4, "busy_bit": 7, "xfer_cycles": 8 }
+    "ctrl": 250, "done_bit": 4, "busy_bit": 7, "xfer_cycles": 8,
+    "clear_done_on_read": false, "signal_irq_on_done": false }
 ]
 ```
 
@@ -352,6 +379,7 @@ models/
   { "name": "ADC", "irq": 9, "space": "sfr", "ctrl": 128, "cfg": 154,
     "data": 159, "start_bit": 0, "if_bit": 5, "busy_bit": 4,
     "conversion_cycles": 96, "channel_mask": 15, "channel_shift": 0,
+    "status": 0, "signal_irq_on_done": false,
     "channels": [ { "channel": 0, "pin": "P1.1" } ] }
 ]
 ```

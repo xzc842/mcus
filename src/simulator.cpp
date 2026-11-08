@@ -225,7 +225,14 @@ void Simulator::advance_clock(VirtTime delta) {
         uint32_t ctrl = shm_.read_reg(t.enable.space, t.enable.reg, enable_w);
         if (!(ctrl & (1u << t.enable.bit))) continue;
 
-        const uint64_t prescaler = t.prescaler == 0 ? 1 : t.prescaler;
+        uint64_t prescaler = t.prescaler == 0 ? 1 : t.prescaler;
+        if (t.prescaler_reg != 0) {
+            const uint8_t pw = reg_width(t.prescaler_space, t.prescaler_reg);
+            const uint32_t psc = shm_.read_reg(t.prescaler_space,
+                                               t.prescaler_reg, pw);
+            prescaler = (static_cast<uint64_t>(psc) + 1) * t.prescaler_scale;
+            if (prescaler == 0) prescaler = 1;
+        }
         const uint64_t total = timer_acc_[ti] + delta;
         const uint64_t ticks = total / prescaler;
         timer_acc_[ti] = total % prescaler;
@@ -244,10 +251,31 @@ void Simulator::advance_clock(VirtTime delta) {
                            : read_counter_reg(t.counter.lo_reg);
         const uint64_t mask =
             (t.counter.bits >= 64) ? ~0ull : ((1ull << t.counter.bits) - 1);
+        const uint64_t reload = dual
+            ? ((read_counter_reg(t.counter.reload_hi_reg) << 8) |
+               read_counter_reg(t.counter.reload_lo_reg))
+            : read_counter_reg(t.counter.reload_lo_reg);
 
         uint64_t next;
         bool overflow;
-        if (t.counter.up) {
+        if (t.reload_compare) {
+            const uint64_t period = (reload < mask ? reload : mask) + 1;
+            if (t.counter.up) {
+                const uint64_t total_count = cur + ticks;
+                overflow = total_count >= period;
+                next = total_count % period;
+            } else {
+                if (ticks > cur) {
+                    const uint64_t remaining = ticks - cur;
+                    next = period - 1 -
+                           ((remaining - 1) % period);
+                    overflow = true;
+                } else {
+                    next = cur - ticks;
+                    overflow = false;
+                }
+            }
+        } else if (t.counter.up) {
             next = (cur + ticks) & mask;
             overflow = ((cur + ticks) > mask);
         } else {

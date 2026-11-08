@@ -8,7 +8,7 @@
 
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
 - **芯片差异在模型文件**：地址空间、寄存器语义、定时器/外设结构、引脚复用、中断向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
-- **指令集可插拔**：按模型文件的 `arch` 字段加载 ISA 模块，当前有 `mcus-minimal` 和 `8051` 两个 ISA。
+- **指令集可插拔**：按模型文件的 `arch` 字段加载 ISA 模块，当前有 `mcus-minimal`、`8051` 和 `ARM Cortex-M3` 三个 ISA。
 - **外部程序不在本项目内**：外设模型通过共享内存和双向事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
 - **总线事件化**：UART/SPI/USB 的收发都走 `BusEvent`/`UsbEvent`；SPI 等同步总线在外部程序 attach 后冻结 CPU 等待响应。
 - **流满背压暂停**：事件流 out 满时 CPU 线程暂停推进；in 满时外部 `push_in` 返回失败。
@@ -23,9 +23,12 @@ mcus/
 ├── config/
 │   ├── example.toml
 │   └── debug.toml
+├── examples/
+│   └── stm32f103c8t6/
 ├── models/
 │   ├── dummy.json
 │   ├── ch552g.json
+│   ├── stm32f103c8t6.json
 │   ├── generic.json
 │   └── schema.md
 ├── include/mcus/
@@ -53,6 +56,7 @@ mcus/
 │   ├── isa_base.cpp
 │   ├── isa_registry.cpp
 │   ├── isa_8051.cpp
+│   ├── isa_arm.cpp
 │   ├── main.cpp
 │   └── log.cpp
 ├── tests/
@@ -62,6 +66,7 @@ mcus/
 │   ├── test_cpu_minimal.cpp
 │   ├── test_interrupt.cpp
 │   ├── test_peripherals.cpp
+│   ├── test_arm_isa.cpp
 │   ├── test_generic_model.cpp
 │   ├── test_timer.cpp
 │   ├── test_breakpoint.cpp
@@ -91,7 +96,7 @@ ctest --test-dir build --output-on-failure
 
 四个启动参数：
 
-- **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so`。
+- **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so` / `libmcus_isa_arm.so`。
 - **模型文件**：描述芯片静态结构。
 - **固件**：`.bin` 或 `.hex`/`.ihx`。
 - **配置文件**：共享内存名、事件流容量、晶振频率、日志级别等。
@@ -144,6 +149,15 @@ WCH CH552G 模型：
 - 引脚：P1.0–P1.7、P3.0–P3.7、RST，`source_reg` 指向对应端口 SFR，`direction_reg` 指向 `P1_DIR_PU`/`P3_DIR_PU`。
 - 外设：`uarts`（UART0/UART1）、`spis`（SPI0）、`pwms`、`adcs`、`tkeys`、`gpio_irq`、`usb`，寄存器/引脚/时序全部由模型描述。
 - ISA 扩展：`wch_dptr1_movx`，启用 0xA5 扩展指令。
+
+### `models/stm32f103c8t6.json`
+
+ARM Cortex-M3 模型：
+
+- 地址空间：`flash`（64KB @ `0x08000000`）、`sram`（20KB @ `0x20000000`）、`periph`（`0x40000000`）、`system`（`0xE0000000`）。
+- 外设：GPIOA/B/C、USART1/2/3、SPI1/2、TIM2/3/4、ADC1、NVIC/SCB/SysTick、RCC/FLASH/AFIO/EXTI。
+- I2C/USB/CAN/DMA 目前是寄存器骨架，无协议引擎。
+- ISA：`src/isa_arm.cpp`，外部库 `libmcus_isa_arm.so`。
 
 ## 5. 头文件
 
@@ -285,6 +299,10 @@ CPU 核心：
 ### `tests/test_cpu_minimal.cpp`
 
 加载 dummy 模型和手写固件，验证 MMIO 写事件、中断进入、复位。
+
+### `tests/test_arm_isa.cpp`
+
+加载 `models/stm32f103c8t6.json`，执行包含向量表、MOVW/MOVT、STR、BL、PUSH/POP 的 ARM 固件，验证 Cortex-M3 复位/调用/GPIO。
 
 ### `tests/test_generic_model.cpp`
 

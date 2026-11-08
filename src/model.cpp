@@ -127,6 +127,16 @@ Model Model::load_from_file(const std::string& path) {
             if (act.space.empty()) act.space = rd.space;
         for (auto& act : rd.on_read)
             if (act.space.empty()) act.space = rd.space;
+        for (const auto& bw : r.value("bit_writes", json::array())) {
+            BitWriteDesc d;
+            d.space = str(bw, "space", rd.space);
+            d.addr = u32(bw, "addr");
+            d.source_bit = static_cast<uint8_t>(u32(bw, "source_bit", 0));
+            d.target_bit = static_cast<uint8_t>(u32(bw, "target_bit", 0));
+            d.count = static_cast<uint8_t>(u32(bw, "count", 1));
+            d.set = str(bw, "action", "set") == "set";
+            rd.bit_writes.push_back(std::move(d));
+        }
         m.registers.push_back(std::move(rd));
     }
     for (const auto& p : j.value("pins", json::array())) {
@@ -145,6 +155,12 @@ Model Model::load_from_file(const std::string& path) {
             pd.direction_reg = u32(p, "direction_reg", 0);
             pd.direction_bit = static_cast<uint8_t>(u32(p, "direction_bit", pd.source_bit));
         }
+        if (p.contains("input_reg") || p.contains("input_space")) {
+            pd.has_input = true;
+            pd.input_space = str(p, "input_space", pd.source_space);
+            pd.input_reg = u32(p, "input_reg", pd.source_reg);
+            pd.input_bit = static_cast<uint8_t>(u32(p, "input_bit", pd.source_bit));
+        }
         m.pins.push_back(std::move(pd));
     }
     for (const auto& irq : j.value("interrupts", json::array())) {
@@ -161,6 +177,7 @@ Model Model::load_from_file(const std::string& path) {
         d.pending_reg = u32(irq, "pending_reg");
         d.pending_space = str(irq, "pending_space");
         d.pending_bit = static_cast<uint8_t>(u32(irq, "pending_bit"));
+        d.pending_mask = u32(irq, "pending_mask", 0);
         d.clear_pending = b(irq, "clear_pending", true);
         m.interrupts.push_back(std::move(d));
     }
@@ -184,6 +201,10 @@ Model Model::load_from_file(const std::string& path) {
         td.irq = u32(t, "irq");
         td.overflow_action = str(t, "overflow_action", "reload");
         td.prescaler = std::max<uint32_t>(1, u32(t, "prescaler", 1));
+        td.prescaler_reg = u32(t, "prescaler_reg", 0);
+        td.prescaler_space = str(t, "prescaler_space", td.counter.reg_space);
+        td.prescaler_scale = std::max<uint32_t>(1, u32(t, "prescaler_scale", 1));
+        td.reload_compare = b(t, "reload_compare", false);
         m.timers.push_back(std::move(td));
     }
 
@@ -214,6 +235,8 @@ Model Model::load_from_file(const std::string& path) {
             u32_alias(u, "rx_flag_bit", "ri_bit", 0));
         d.tx_cycles = u32(u, "tx_cycles", 0);
         d.rx_fifo = std::max<uint32_t>(1, u32(u, "rx_fifo", 8));
+        d.clear_tx_on_write = b(u, "clear_tx_on_write", false);
+        d.signal_irq_on_rx = b(u, "signal_irq_on_rx", false);
         m.uarts.push_back(std::move(d));
     }
 
@@ -228,7 +251,10 @@ Model Model::load_from_file(const std::string& path) {
         d.done_bit = static_cast<uint8_t>(
             u32_alias(s, "done_bit", "spif_bit", 4));
         d.busy_bit = static_cast<uint8_t>(u32(s, "busy_bit", 7));
+        d.tx_ready_bit = static_cast<uint8_t>(u32(s, "tx_ready_bit", 0xFF));
         d.xfer_cycles = u32(s, "xfer_cycles", 8);
+        d.clear_done_on_read = b(s, "clear_done_on_read", false);
+        d.signal_irq_on_done = b(s, "signal_irq_on_done", false);
         m.spis.push_back(std::move(d));
     }
 
@@ -264,12 +290,14 @@ Model Model::load_from_file(const std::string& path) {
         d.ctrl = u32(a, "ctrl");
         d.cfg = u32(a, "cfg");
         d.data = u32(a, "data");
+        d.status = u32(a, "status", 0);
         d.start_bit = static_cast<uint8_t>(u32(a, "start_bit", 0));
         d.if_bit = static_cast<uint8_t>(u32(a, "if_bit", 5));
-        d.busy_bit = static_cast<uint8_t>(u32(a, "busy_bit", 4));
+        d.busy_bit = static_cast<uint8_t>(u32(a, "busy_bit", 0xFF));
         d.conversion_cycles = u32(a, "conversion_cycles", 96);
         d.channel_mask = u32(a, "channel_mask", 0xFFFFFFFFu);
         d.channel_shift = static_cast<uint8_t>(u32(a, "channel_shift", 0));
+        d.signal_irq_on_done = b(a, "signal_irq_on_done", false);
         for (const auto& c : a.value("channels", json::array())) {
             const uint32_t ch = u32(c, "channel");
             const uint32_t pin = resolve_pin(c.at("pin"));
@@ -352,6 +380,7 @@ Model Model::load_from_file(const std::string& path) {
             m.arch_desc.global_irq_enable.space = str(ge, "space", "");
             m.arch_desc.global_irq_enable.reg = u32(ge, "reg", 0);
             m.arch_desc.global_irq_enable.bit = static_cast<uint8_t>(u32(ge, "bit", 0));
+            m.arch_desc.global_irq_enable.invert = b(ge, "invert", false);
         }
         m.arch_desc.irq_push_bytes = static_cast<uint8_t>(u32(ad, "irq_push_bytes", 0));
         m.arch_desc.stack_grows_down = b(ad, "stack_grows_down", false);
@@ -490,9 +519,12 @@ void Model::validate() const {
     for (const auto& t : timers) {
         if (t.counter.reg_space.empty())
             throw std::runtime_error("timer reg_space empty: " + t.name);
+        if (t.prescaler_reg != 0 &&
+            !reg_index.count(reg_key(t.prescaler_space, t.prescaler_reg)))
+            throw std::runtime_error("timer prescaler_reg missing: " + t.name);
         if (!reg_index.count(reg_key(t.counter.reg_space, t.counter.lo_reg)))
             throw std::runtime_error("timer lo_reg missing: " + t.name);
-        if (t.counter.bits > 8 &&
+        if (t.counter.hi_reg != 0 &&
             !reg_index.count(reg_key(t.counter.reg_space, t.counter.hi_reg)))
             throw std::runtime_error("timer hi_reg missing: " + t.name);
         if (!reg_index.count(reg_key(t.counter.reg_space, t.counter.reload_lo_reg)))
@@ -513,6 +545,15 @@ void Model::validate() const {
             throw std::runtime_error("peripheral irq missing: " + what);
     };
 
+    for (const auto& rd : registers) {
+        for (const auto& bw : rd.bit_writes) {
+            check_reg(bw.space, bw.addr, rd.name + ".bit_writes");
+            if (bw.count == 0 || bw.source_bit + bw.count > 32 ||
+                bw.target_bit + bw.count > 32)
+                throw std::runtime_error("invalid bit_writes range: " + rd.name);
+        }
+    }
+
     for (const auto& p : pins) {
         if (p.has_direction &&
             !has_reg(p.direction_space, p.direction_reg))
@@ -520,6 +561,8 @@ void Model::validate() const {
         if (!p.source_space.empty() &&
             !has_reg(p.source_space, p.source_reg))
             throw std::runtime_error("pin source_reg missing: " + p.name);
+        if (p.has_input && !has_reg(p.input_space, p.input_reg))
+            throw std::runtime_error("pin input_reg missing: " + p.name);
     }
 
     for (const auto& sp : arch_desc.fast_spaces) {
@@ -566,6 +609,7 @@ void Model::validate() const {
         check_reg(a.space, a.ctrl, a.name + ".ctrl");
         check_reg(a.space, a.cfg, a.name + ".cfg");
         check_reg(a.space, a.data, a.name + ".data");
+        if (a.status != 0) check_reg(a.space, a.status, a.name + ".status");
         check_irq(a.irq, a.name);
         for (uint32_t pin : a.channel_pins)
             if (pin != UINT32_MAX && pin >= pins.size())

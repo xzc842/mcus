@@ -1,0 +1,3454 @@
+{
+  "name": "stm32f103c8t6",
+  "description": "ST STM32F103C8T6, Cortex-M3, 64KB Flash, 20KB SRAM, GPIO/USART/SPI/TIM/ADC/NVIC/SysTick",
+  "arch": "arm",
+  "crystal_hz": 72000000,
+  "cycles_per_instruction": 1,
+  "reset_vector": 134217728,
+  "reset_space": "flash",
+  "initial_sp": 536891388,
+  "sp_space": "sram",
+  "isa_extensions": [],
+  "arch_desc": {
+    "global_irq_enable": {
+      "space": "system",
+      "reg": 3758157808,
+      "bit": 0,
+      "present": true,
+      "invert": true
+    },
+    "irq_push_bytes": 32,
+    "stack_grows_down": true,
+    "fast_spaces": [
+      "flash",
+      "sram"
+    ],
+    "reset_space": "flash",
+    "reset_vector": 134217728,
+    "sp_space": "sram",
+    "initial_sp": 536891388,
+    "sp_reg": 0,
+    "sp_reg_space": "sram",
+    "has_pc_reg": false
+  },
+  "regions": [
+    {
+      "name": "flash",
+      "space": "flash",
+      "base": 134217728,
+      "size": 65536,
+      "is_mmio": false,
+      "read_only": true
+    },
+    {
+      "name": "sram",
+      "space": "sram",
+      "base": 536870912,
+      "size": 20480,
+      "is_mmio": false
+    },
+    {
+      "name": "periph",
+      "space": "periph",
+      "base": 1073741824,
+      "size": 196608,
+      "is_mmio": true
+    },
+    {
+      "name": "system",
+      "space": "system",
+      "base": 3758096384,
+      "size": 65536,
+      "is_mmio": true
+    }
+  ],
+  "registers": [
+    {
+      "name": "GPIOA_CRL",
+      "space": "periph",
+      "addr": 1073809408,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1145324612
+    },
+    {
+      "name": "GPIOA_CRH",
+      "space": "periph",
+      "addr": 1073809412,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1145324612
+    },
+    {
+      "name": "GPIOA_IDR",
+      "space": "periph",
+      "addr": 1073809416,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOA_ODR",
+      "space": "periph",
+      "addr": 1073809420,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOA_BSRR",
+      "space": "periph",
+      "addr": 1073809424,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "bit_writes": [
+        {
+          "space": "periph",
+          "addr": 1073809420,
+          "source_bit": 0,
+          "target_bit": 0,
+          "count": 16,
+          "action": "set"
+        },
+        {
+          "space": "periph",
+          "addr": 1073809420,
+          "source_bit": 16,
+          "target_bit": 0,
+          "count": 16,
+          "action": "clear"
+        }
+      ]
+    },
+    {
+      "name": "GPIOA_BRR",
+      "space": "periph",
+      "addr": 1073809428,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "bit_writes": [
+        {
+          "space": "periph",
+          "addr": 1073809420,
+          "source_bit": 0,
+          "target_bit": 0,
+          "count": 16,
+          "action": "clear"
+        }
+      ]
+    },
+    {
+      "name": "GPIOA_LCKR",
+      "space": "periph",
+      "addr": 1073809432,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOB_CRL",
+      "space": "periph",
+      "addr": 1073810432,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1145324612
+    },
+    {
+      "name": "GPIOB_CRH",
+      "space": "periph",
+      "addr": 1073810436,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1145324612
+    },
+    {
+      "name": "GPIOB_IDR",
+      "space": "periph",
+      "addr": 1073810440,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOB_ODR",
+      "space": "periph",
+      "addr": 1073810444,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOB_BSRR",
+      "space": "periph",
+      "addr": 1073810448,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "bit_writes": [
+        {
+          "space": "periph",
+          "addr": 1073810444,
+          "source_bit": 0,
+          "target_bit": 0,
+          "count": 16,
+          "action": "set"
+        },
+        {
+          "space": "periph",
+          "addr": 1073810444,
+          "source_bit": 16,
+          "target_bit": 0,
+          "count": 16,
+          "action": "clear"
+        }
+      ]
+    },
+    {
+      "name": "GPIOB_BRR",
+      "space": "periph",
+      "addr": 1073810452,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "bit_writes": [
+        {
+          "space": "periph",
+          "addr": 1073810444,
+          "source_bit": 0,
+          "target_bit": 0,
+          "count": 16,
+          "action": "clear"
+        }
+      ]
+    },
+    {
+      "name": "GPIOB_LCKR",
+      "space": "periph",
+      "addr": 1073810456,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOC_CRL",
+      "space": "periph",
+      "addr": 1073811456,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1145324612
+    },
+    {
+      "name": "GPIOC_CRH",
+      "space": "periph",
+      "addr": 1073811460,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1145324612
+    },
+    {
+      "name": "GPIOC_IDR",
+      "space": "periph",
+      "addr": 1073811464,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOC_ODR",
+      "space": "periph",
+      "addr": 1073811468,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "GPIOC_BSRR",
+      "space": "periph",
+      "addr": 1073811472,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "bit_writes": [
+        {
+          "space": "periph",
+          "addr": 1073811468,
+          "source_bit": 0,
+          "target_bit": 0,
+          "count": 16,
+          "action": "set"
+        },
+        {
+          "space": "periph",
+          "addr": 1073811468,
+          "source_bit": 16,
+          "target_bit": 0,
+          "count": 16,
+          "action": "clear"
+        }
+      ]
+    },
+    {
+      "name": "GPIOC_BRR",
+      "space": "periph",
+      "addr": 1073811476,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "bit_writes": [
+        {
+          "space": "periph",
+          "addr": 1073811468,
+          "source_bit": 0,
+          "target_bit": 0,
+          "count": 16,
+          "action": "clear"
+        }
+      ]
+    },
+    {
+      "name": "GPIOC_LCKR",
+      "space": "periph",
+      "addr": 1073811480,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART1_SR",
+      "space": "periph",
+      "addr": 1073821696,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 192
+    },
+    {
+      "name": "USART1_DR",
+      "space": "periph",
+      "addr": 1073821700,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART1_BRR",
+      "space": "periph",
+      "addr": 1073821704,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART1_CR1",
+      "space": "periph",
+      "addr": 1073821708,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART1_CR2",
+      "space": "periph",
+      "addr": 1073821712,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART1_CR3",
+      "space": "periph",
+      "addr": 1073821716,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART1_GTPR",
+      "space": "periph",
+      "addr": 1073821720,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART2_SR",
+      "space": "periph",
+      "addr": 1073759232,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 192
+    },
+    {
+      "name": "USART2_DR",
+      "space": "periph",
+      "addr": 1073759236,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART2_BRR",
+      "space": "periph",
+      "addr": 1073759240,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART2_CR1",
+      "space": "periph",
+      "addr": 1073759244,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART2_CR2",
+      "space": "periph",
+      "addr": 1073759248,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART2_CR3",
+      "space": "periph",
+      "addr": 1073759252,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART2_GTPR",
+      "space": "periph",
+      "addr": 1073759256,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART3_SR",
+      "space": "periph",
+      "addr": 1073760256,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 192
+    },
+    {
+      "name": "USART3_DR",
+      "space": "periph",
+      "addr": 1073760260,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART3_BRR",
+      "space": "periph",
+      "addr": 1073760264,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART3_CR1",
+      "space": "periph",
+      "addr": 1073760268,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART3_CR2",
+      "space": "periph",
+      "addr": 1073760272,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART3_CR3",
+      "space": "periph",
+      "addr": 1073760276,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USART3_GTPR",
+      "space": "periph",
+      "addr": 1073760280,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_CR1",
+      "space": "periph",
+      "addr": 1073819648,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_CR2",
+      "space": "periph",
+      "addr": 1073819652,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_SR",
+      "space": "periph",
+      "addr": 1073819656,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 2
+    },
+    {
+      "name": "SPI1_DR",
+      "space": "periph",
+      "addr": 1073819660,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_CRCPR",
+      "space": "periph",
+      "addr": 1073819664,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_RXCRCR",
+      "space": "periph",
+      "addr": 1073819668,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_TXCRCR",
+      "space": "periph",
+      "addr": 1073819672,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_I2SCFGR",
+      "space": "periph",
+      "addr": 1073819676,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI1_I2SPR",
+      "space": "periph",
+      "addr": 1073819680,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_CR1",
+      "space": "periph",
+      "addr": 1073756160,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_CR2",
+      "space": "periph",
+      "addr": 1073756164,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_SR",
+      "space": "periph",
+      "addr": 1073756168,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 2
+    },
+    {
+      "name": "SPI2_DR",
+      "space": "periph",
+      "addr": 1073756172,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_CRCPR",
+      "space": "periph",
+      "addr": 1073756176,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_RXCRCR",
+      "space": "periph",
+      "addr": 1073756180,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_TXCRCR",
+      "space": "periph",
+      "addr": 1073756184,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_I2SCFGR",
+      "space": "periph",
+      "addr": 1073756188,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SPI2_I2SPR",
+      "space": "periph",
+      "addr": 1073756192,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CR1",
+      "space": "periph",
+      "addr": 1073741824,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CR2",
+      "space": "periph",
+      "addr": 1073741828,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_SMCR",
+      "space": "periph",
+      "addr": 1073741832,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_DIER",
+      "space": "periph",
+      "addr": 1073741836,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_SR",
+      "space": "periph",
+      "addr": 1073741840,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_EGR",
+      "space": "periph",
+      "addr": 1073741844,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCMR1",
+      "space": "periph",
+      "addr": 1073741848,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCMR2",
+      "space": "periph",
+      "addr": 1073741852,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCER",
+      "space": "periph",
+      "addr": 1073741856,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CNT",
+      "space": "periph",
+      "addr": 1073741860,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_PSC",
+      "space": "periph",
+      "addr": 1073741864,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_ARR",
+      "space": "periph",
+      "addr": 1073741868,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCR1",
+      "space": "periph",
+      "addr": 1073741876,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCR2",
+      "space": "periph",
+      "addr": 1073741880,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCR3",
+      "space": "periph",
+      "addr": 1073741884,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM2_CCR4",
+      "space": "periph",
+      "addr": 1073741888,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CR1",
+      "space": "periph",
+      "addr": 1073742848,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CR2",
+      "space": "periph",
+      "addr": 1073742852,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_SMCR",
+      "space": "periph",
+      "addr": 1073742856,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_DIER",
+      "space": "periph",
+      "addr": 1073742860,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_SR",
+      "space": "periph",
+      "addr": 1073742864,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_EGR",
+      "space": "periph",
+      "addr": 1073742868,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCMR1",
+      "space": "periph",
+      "addr": 1073742872,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCMR2",
+      "space": "periph",
+      "addr": 1073742876,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCER",
+      "space": "periph",
+      "addr": 1073742880,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CNT",
+      "space": "periph",
+      "addr": 1073742884,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_PSC",
+      "space": "periph",
+      "addr": 1073742888,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_ARR",
+      "space": "periph",
+      "addr": 1073742892,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCR1",
+      "space": "periph",
+      "addr": 1073742900,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCR2",
+      "space": "periph",
+      "addr": 1073742904,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCR3",
+      "space": "periph",
+      "addr": 1073742908,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM3_CCR4",
+      "space": "periph",
+      "addr": 1073742912,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CR1",
+      "space": "periph",
+      "addr": 1073743872,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CR2",
+      "space": "periph",
+      "addr": 1073743876,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_SMCR",
+      "space": "periph",
+      "addr": 1073743880,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_DIER",
+      "space": "periph",
+      "addr": 1073743884,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_SR",
+      "space": "periph",
+      "addr": 1073743888,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_EGR",
+      "space": "periph",
+      "addr": 1073743892,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCMR1",
+      "space": "periph",
+      "addr": 1073743896,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCMR2",
+      "space": "periph",
+      "addr": 1073743900,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCER",
+      "space": "periph",
+      "addr": 1073743904,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CNT",
+      "space": "periph",
+      "addr": 1073743908,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_PSC",
+      "space": "periph",
+      "addr": 1073743912,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_ARR",
+      "space": "periph",
+      "addr": 1073743916,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCR1",
+      "space": "periph",
+      "addr": 1073743924,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCR2",
+      "space": "periph",
+      "addr": 1073743928,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCR3",
+      "space": "periph",
+      "addr": 1073743932,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "TIM4_CCR4",
+      "space": "periph",
+      "addr": 1073743936,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_SR",
+      "space": "periph",
+      "addr": 1073816576,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_CR1",
+      "space": "periph",
+      "addr": 1073816580,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_CR2",
+      "space": "periph",
+      "addr": 1073816584,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_SMPR1",
+      "space": "periph",
+      "addr": 1073816588,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_SMPR2",
+      "space": "periph",
+      "addr": 1073816592,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_SQR1",
+      "space": "periph",
+      "addr": 1073816620,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_SQR2",
+      "space": "periph",
+      "addr": 1073816624,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_SQR3",
+      "space": "periph",
+      "addr": 1073816628,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC1_DR",
+      "space": "periph",
+      "addr": 1073816652,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_CR",
+      "space": "periph",
+      "addr": 1073876992,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_CFGR",
+      "space": "periph",
+      "addr": 1073876996,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_CIR",
+      "space": "periph",
+      "addr": 1073877000,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_APB2RSTR",
+      "space": "periph",
+      "addr": 1073877004,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_APB1RSTR",
+      "space": "periph",
+      "addr": 1073877008,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_AHBENR",
+      "space": "periph",
+      "addr": 1073877012,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_APB2ENR",
+      "space": "periph",
+      "addr": 1073877016,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_APB1ENR",
+      "space": "periph",
+      "addr": 1073877020,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_BDCR",
+      "space": "periph",
+      "addr": 1073877024,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "RCC_CSR",
+      "space": "periph",
+      "addr": 1073877028,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_ACR",
+      "space": "periph",
+      "addr": 1073881088,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_KEYR",
+      "space": "periph",
+      "addr": 1073881092,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_OPTKEYR",
+      "space": "periph",
+      "addr": 1073881096,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_SR",
+      "space": "periph",
+      "addr": 1073881100,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_CR",
+      "space": "periph",
+      "addr": 1073881104,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_AR",
+      "space": "periph",
+      "addr": 1073881108,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_OBR",
+      "space": "periph",
+      "addr": 1073881116,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "FLASH_WRPR",
+      "space": "periph",
+      "addr": 1073881120,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AFIO_EVCR",
+      "space": "periph",
+      "addr": 1073807360,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AFIO_MAPR",
+      "space": "periph",
+      "addr": 1073807364,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AFIO_EXTICR1",
+      "space": "periph",
+      "addr": 1073807368,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AFIO_EXTICR2",
+      "space": "periph",
+      "addr": 1073807372,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AFIO_EXTICR3",
+      "space": "periph",
+      "addr": 1073807376,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "AFIO_EXTICR4",
+      "space": "periph",
+      "addr": 1073807380,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "EXTI_IMR",
+      "space": "periph",
+      "addr": 1073808384,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "EXTI_EMR",
+      "space": "periph",
+      "addr": 1073808388,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "EXTI_RTSR",
+      "space": "periph",
+      "addr": 1073808392,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "EXTI_FTSR",
+      "space": "periph",
+      "addr": 1073808396,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "EXTI_SWIER",
+      "space": "periph",
+      "addr": 1073808400,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "EXTI_PR",
+      "space": "periph",
+      "addr": 1073808404,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_CR1",
+      "space": "periph",
+      "addr": 1073763328,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_CR2",
+      "space": "periph",
+      "addr": 1073763332,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_OAR1",
+      "space": "periph",
+      "addr": 1073763336,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_OAR2",
+      "space": "periph",
+      "addr": 1073763340,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_DR",
+      "space": "periph",
+      "addr": 1073763344,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_SR1",
+      "space": "periph",
+      "addr": 1073763348,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_SR2",
+      "space": "periph",
+      "addr": 1073763352,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_CCR",
+      "space": "periph",
+      "addr": 1073763356,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C1_TRISE",
+      "space": "periph",
+      "addr": 1073763360,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_CR1",
+      "space": "periph",
+      "addr": 1073764352,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_CR2",
+      "space": "periph",
+      "addr": 1073764356,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_OAR1",
+      "space": "periph",
+      "addr": 1073764360,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_OAR2",
+      "space": "periph",
+      "addr": 1073764364,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_DR",
+      "space": "periph",
+      "addr": 1073764368,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_SR1",
+      "space": "periph",
+      "addr": 1073764372,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_SR2",
+      "space": "periph",
+      "addr": 1073764376,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_CCR",
+      "space": "periph",
+      "addr": 1073764380,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C2_TRISE",
+      "space": "periph",
+      "addr": 1073764384,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_MCR",
+      "space": "periph",
+      "addr": 1073767424,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_MSR",
+      "space": "periph",
+      "addr": 1073767428,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_TSR",
+      "space": "periph",
+      "addr": 1073767432,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_RF0R",
+      "space": "periph",
+      "addr": 1073767436,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_RF1R",
+      "space": "periph",
+      "addr": 1073767440,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_IER",
+      "space": "periph",
+      "addr": 1073767444,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_ESR",
+      "space": "periph",
+      "addr": 1073767448,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_BTR",
+      "space": "periph",
+      "addr": 1073767452,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP0R",
+      "space": "periph",
+      "addr": 1073765376,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP1R",
+      "space": "periph",
+      "addr": 1073765380,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP2R",
+      "space": "periph",
+      "addr": 1073765384,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP3R",
+      "space": "periph",
+      "addr": 1073765388,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP4R",
+      "space": "periph",
+      "addr": 1073765392,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP5R",
+      "space": "periph",
+      "addr": 1073765396,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP6R",
+      "space": "periph",
+      "addr": 1073765400,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_EP7R",
+      "space": "periph",
+      "addr": 1073765404,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_CNTR",
+      "space": "periph",
+      "addr": 1073765440,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_ISTR",
+      "space": "periph",
+      "addr": 1073765444,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_FNR",
+      "space": "periph",
+      "addr": 1073765448,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_DADDR",
+      "space": "periph",
+      "addr": 1073765452,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "USB_BTABLE",
+      "space": "periph",
+      "addr": 1073765456,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ISER0",
+      "space": "system",
+      "addr": 3758153984,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ISER1",
+      "space": "system",
+      "addr": 3758153988,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ICER0",
+      "space": "system",
+      "addr": 3758154112,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ICER1",
+      "space": "system",
+      "addr": 3758154116,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ISPR0",
+      "space": "system",
+      "addr": 3758154240,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ISPR1",
+      "space": "system",
+      "addr": 3758154244,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ICPR0",
+      "space": "system",
+      "addr": 3758154368,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_ICPR1",
+      "space": "system",
+      "addr": 3758154372,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IABR0",
+      "space": "system",
+      "addr": 3758154496,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IABR1",
+      "space": "system",
+      "addr": 3758154500,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR0",
+      "space": "system",
+      "addr": 3758154752,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_CPUID",
+      "space": "system",
+      "addr": 3758157056,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 1091551793
+    },
+    {
+      "name": "SCB_ICSR",
+      "space": "system",
+      "addr": 3758157060,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_VTOR",
+      "space": "system",
+      "addr": 3758157064,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 134217728
+    },
+    {
+      "name": "SCB_AIRCR",
+      "space": "system",
+      "addr": 3758157068,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_SCR",
+      "space": "system",
+      "addr": 3758157072,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_CCR",
+      "space": "system",
+      "addr": 3758157076,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_SHPR1",
+      "space": "system",
+      "addr": 3758157080,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_SHPR2",
+      "space": "system",
+      "addr": 3758157084,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_SHPR3",
+      "space": "system",
+      "addr": 3758157088,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_SHCSR",
+      "space": "system",
+      "addr": 3758157092,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_CFSR",
+      "space": "system",
+      "addr": 3758157096,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_HFSR",
+      "space": "system",
+      "addr": 3758157100,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_DFSR",
+      "space": "system",
+      "addr": 3758157104,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_MMFAR",
+      "space": "system",
+      "addr": 3758157108,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SCB_BFAR",
+      "space": "system",
+      "addr": 3758157112,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SYST_CSR",
+      "space": "system",
+      "addr": 3758153744,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0,
+      "on_read": [
+        {
+          "action": "clear_bit",
+          "space": "system",
+          "addr": 3758153744,
+          "bit": 16
+        }
+      ]
+    },
+    {
+      "name": "SYST_RVR",
+      "space": "system",
+      "addr": 3758153748,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SYST_CVR",
+      "space": "system",
+      "addr": 3758153752,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "SYST_CALIB",
+      "space": "system",
+      "addr": 3758153756,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 168000
+    },
+    {
+      "name": "CPU_PRIMASK",
+      "space": "system",
+      "addr": 3758157808,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR1",
+      "space": "system",
+      "addr": 3758154756,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR2",
+      "space": "system",
+      "addr": 3758154760,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR3",
+      "space": "system",
+      "addr": 3758154764,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR4",
+      "space": "system",
+      "addr": 3758154768,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR5",
+      "space": "system",
+      "addr": 3758154772,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR6",
+      "space": "system",
+      "addr": 3758154776,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR7",
+      "space": "system",
+      "addr": 3758154780,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR8",
+      "space": "system",
+      "addr": 3758154784,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR9",
+      "space": "system",
+      "addr": 3758154788,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR10",
+      "space": "system",
+      "addr": 3758154792,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "NVIC_IPR11",
+      "space": "system",
+      "addr": 3758154796,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    }
+  ],
+  "pins": [
+    {
+      "name": "PA0",
+      "number": 0,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 0,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 0
+    },
+    {
+      "name": "PA1",
+      "number": 1,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 1,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 1
+    },
+    {
+      "name": "PA2",
+      "number": 2,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 2,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 2
+    },
+    {
+      "name": "PA3",
+      "number": 3,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 3,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 3
+    },
+    {
+      "name": "PA4",
+      "number": 4,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 4,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 4
+    },
+    {
+      "name": "PA5",
+      "number": 5,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 5,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 5
+    },
+    {
+      "name": "PA6",
+      "number": 6,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 6,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 6
+    },
+    {
+      "name": "PA7",
+      "number": 7,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 7,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 7
+    },
+    {
+      "name": "PA8",
+      "number": 8,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 8,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 8
+    },
+    {
+      "name": "PA9",
+      "number": 9,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 9,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 9
+    },
+    {
+      "name": "PA10",
+      "number": 10,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 10,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 10
+    },
+    {
+      "name": "PA11",
+      "number": 11,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 11,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 11
+    },
+    {
+      "name": "PA12",
+      "number": 12,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 12,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 12
+    },
+    {
+      "name": "PA13",
+      "number": 13,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 13,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 13
+    },
+    {
+      "name": "PA14",
+      "number": 14,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 14,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 14
+    },
+    {
+      "name": "PA15",
+      "number": 15,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073809420,
+      "source_bit": 15,
+      "input_space": "periph",
+      "input_reg": 1073809416,
+      "input_bit": 15
+    },
+    {
+      "name": "PB0",
+      "number": 16,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 0,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 0
+    },
+    {
+      "name": "PB1",
+      "number": 17,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 1,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 1
+    },
+    {
+      "name": "PB2",
+      "number": 18,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 2,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 2
+    },
+    {
+      "name": "PB3",
+      "number": 19,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 3,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 3
+    },
+    {
+      "name": "PB4",
+      "number": 20,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 4,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 4
+    },
+    {
+      "name": "PB5",
+      "number": 21,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 5,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 5
+    },
+    {
+      "name": "PB6",
+      "number": 22,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 6,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 6
+    },
+    {
+      "name": "PB7",
+      "number": 23,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 7,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 7
+    },
+    {
+      "name": "PB8",
+      "number": 24,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 8,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 8
+    },
+    {
+      "name": "PB9",
+      "number": 25,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 9,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 9
+    },
+    {
+      "name": "PB10",
+      "number": 26,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 10,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 10
+    },
+    {
+      "name": "PB11",
+      "number": 27,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 11,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 11
+    },
+    {
+      "name": "PB12",
+      "number": 28,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 12,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 12
+    },
+    {
+      "name": "PB13",
+      "number": 29,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 13,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 13
+    },
+    {
+      "name": "PB14",
+      "number": 30,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 14,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 14
+    },
+    {
+      "name": "PB15",
+      "number": 31,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073810444,
+      "source_bit": 15,
+      "input_space": "periph",
+      "input_reg": 1073810440,
+      "input_bit": 15
+    },
+    {
+      "name": "PC0",
+      "number": 32,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 0,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 0
+    },
+    {
+      "name": "PC1",
+      "number": 33,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 1,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 1
+    },
+    {
+      "name": "PC2",
+      "number": 34,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 2,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 2
+    },
+    {
+      "name": "PC3",
+      "number": 35,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 3,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 3
+    },
+    {
+      "name": "PC4",
+      "number": 36,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 4,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 4
+    },
+    {
+      "name": "PC5",
+      "number": 37,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 5,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 5
+    },
+    {
+      "name": "PC6",
+      "number": 38,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 6,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 6
+    },
+    {
+      "name": "PC7",
+      "number": 39,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 7,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 7
+    },
+    {
+      "name": "PC8",
+      "number": 40,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 8,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 8
+    },
+    {
+      "name": "PC9",
+      "number": 41,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 9,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 9
+    },
+    {
+      "name": "PC10",
+      "number": 42,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 10,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 10
+    },
+    {
+      "name": "PC11",
+      "number": 43,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 11,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 11
+    },
+    {
+      "name": "PC12",
+      "number": 44,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 12,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 12
+    },
+    {
+      "name": "PC13",
+      "number": 45,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 13,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 13
+    },
+    {
+      "name": "PC14",
+      "number": 46,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 14,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 14
+    },
+    {
+      "name": "PC15",
+      "number": 47,
+      "functions": [
+        "gpio"
+      ],
+      "reset_function": 0,
+      "source_space": "periph",
+      "source_reg": 1073811468,
+      "source_bit": 15,
+      "input_space": "periph",
+      "input_reg": 1073811464,
+      "input_bit": 15
+    }
+  ],
+  "interrupts": [
+    {
+      "name": "WWDG",
+      "number": 0,
+      "vector_addr": 134217792,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 0,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 0,
+      "clear_pending": true
+    },
+    {
+      "name": "PVD",
+      "number": 1,
+      "vector_addr": 134217796,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 1,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 1,
+      "clear_pending": true
+    },
+    {
+      "name": "TAMPER",
+      "number": 2,
+      "vector_addr": 134217800,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 2,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 2,
+      "clear_pending": true
+    },
+    {
+      "name": "RTC",
+      "number": 3,
+      "vector_addr": 134217804,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 3,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 3,
+      "clear_pending": true
+    },
+    {
+      "name": "FLASH",
+      "number": 4,
+      "vector_addr": 134217808,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 4,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 4,
+      "clear_pending": true
+    },
+    {
+      "name": "RCC",
+      "number": 5,
+      "vector_addr": 134217812,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 5,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 5,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI0",
+      "number": 6,
+      "vector_addr": 134217816,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 6,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 6,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI1",
+      "number": 7,
+      "vector_addr": 134217820,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 7,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 7,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI2",
+      "number": 8,
+      "vector_addr": 134217824,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 8,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 8,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI3",
+      "number": 9,
+      "vector_addr": 134217828,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 9,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 9,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI4",
+      "number": 10,
+      "vector_addr": 134217832,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 10,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 10,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel1",
+      "number": 11,
+      "vector_addr": 134217836,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 11,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 11,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel2",
+      "number": 12,
+      "vector_addr": 134217840,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 12,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 12,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel3",
+      "number": 13,
+      "vector_addr": 134217844,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 13,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 13,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel4",
+      "number": 14,
+      "vector_addr": 134217848,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 14,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 14,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel5",
+      "number": 15,
+      "vector_addr": 134217852,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 15,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 15,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel6",
+      "number": 16,
+      "vector_addr": 134217856,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 16,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 16,
+      "clear_pending": true
+    },
+    {
+      "name": "DMA1_Channel7",
+      "number": 17,
+      "vector_addr": 134217860,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 17,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 17,
+      "clear_pending": true
+    },
+    {
+      "name": "ADC1_2",
+      "number": 18,
+      "vector_addr": 134217864,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 18,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 18,
+      "clear_pending": true
+    },
+    {
+      "name": "USB_HP_CAN1_TX",
+      "number": 19,
+      "vector_addr": 134217868,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 19,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 19,
+      "clear_pending": true
+    },
+    {
+      "name": "USB_LP_CAN1_RX0",
+      "number": 20,
+      "vector_addr": 134217872,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 20,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 20,
+      "clear_pending": true
+    },
+    {
+      "name": "CAN1_RX1",
+      "number": 21,
+      "vector_addr": 134217876,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 21,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 21,
+      "clear_pending": true
+    },
+    {
+      "name": "CAN1_SCE",
+      "number": 22,
+      "vector_addr": 134217880,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 22,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 22,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI9_5",
+      "number": 23,
+      "vector_addr": 134217884,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 23,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 23,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM1_BRK",
+      "number": 24,
+      "vector_addr": 134217888,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 24,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 24,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM1_UP",
+      "number": 25,
+      "vector_addr": 134217892,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 25,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 25,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM1_TRG_COM",
+      "number": 26,
+      "vector_addr": 134217896,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 26,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 26,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM1_CC",
+      "number": 27,
+      "vector_addr": 134217900,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 27,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 27,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM2",
+      "number": 28,
+      "vector_addr": 134217904,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 28,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 28,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM3",
+      "number": 29,
+      "vector_addr": 134217908,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 29,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 29,
+      "clear_pending": true
+    },
+    {
+      "name": "TIM4",
+      "number": 30,
+      "vector_addr": 134217912,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 30,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 30,
+      "clear_pending": true
+    },
+    {
+      "name": "I2C1_EV",
+      "number": 31,
+      "vector_addr": 134217916,
+      "vector_space": "flash",
+      "enable_reg": 3758153984,
+      "enable_space": "system",
+      "enable_bit": 31,
+      "pending_reg": 3758154240,
+      "pending_space": "system",
+      "pending_bit": 31,
+      "clear_pending": true
+    },
+    {
+      "name": "I2C1_ER",
+      "number": 32,
+      "vector_addr": 134217920,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 0,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 0,
+      "clear_pending": true
+    },
+    {
+      "name": "I2C2_EV",
+      "number": 33,
+      "vector_addr": 134217924,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 1,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 1,
+      "clear_pending": true
+    },
+    {
+      "name": "I2C2_ER",
+      "number": 34,
+      "vector_addr": 134217928,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 2,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 2,
+      "clear_pending": true
+    },
+    {
+      "name": "SPI1",
+      "number": 35,
+      "vector_addr": 134217932,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 3,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 3,
+      "clear_pending": true
+    },
+    {
+      "name": "SPI2",
+      "number": 36,
+      "vector_addr": 134217936,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 4,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 4,
+      "clear_pending": true
+    },
+    {
+      "name": "USART1",
+      "number": 37,
+      "vector_addr": 134217940,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 5,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 5,
+      "clear_pending": true
+    },
+    {
+      "name": "USART2",
+      "number": 38,
+      "vector_addr": 134217944,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 6,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 6,
+      "clear_pending": true
+    },
+    {
+      "name": "USART3",
+      "number": 39,
+      "vector_addr": 134217948,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 7,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 7,
+      "clear_pending": true
+    },
+    {
+      "name": "EXTI15_10",
+      "number": 40,
+      "vector_addr": 134217952,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 8,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 8,
+      "clear_pending": true
+    },
+    {
+      "name": "RTC_Alarm",
+      "number": 41,
+      "vector_addr": 134217956,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 9,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 9,
+      "clear_pending": true
+    },
+    {
+      "name": "USBWakeUp",
+      "number": 42,
+      "vector_addr": 134217960,
+      "vector_space": "flash",
+      "enable_reg": 3758153988,
+      "enable_space": "system",
+      "enable_bit": 10,
+      "pending_reg": 3758154244,
+      "pending_space": "system",
+      "pending_bit": 10,
+      "clear_pending": true
+    },
+    {
+      "name": "SYSTICK",
+      "number": 100,
+      "vector_addr": 134217788,
+      "vector_space": "flash",
+      "enable_reg": 3758153744,
+      "enable_space": "system",
+      "enable_bit": 1,
+      "pending_reg": 3758153744,
+      "pending_space": "system",
+      "pending_bit": 16,
+      "clear_pending": false
+    }
+  ],
+  "timers": [
+    {
+      "name": "TIM2",
+      "counter": {
+        "bits": 16,
+        "lo_reg": 1073741860,
+        "reg_space": "periph",
+        "reload_lo_reg": 1073741868
+      },
+      "enable": {
+        "reg": 1073741824,
+        "bit": 0
+      },
+      "overflow": {
+        "reg": 1073741840,
+        "bit": 0
+      },
+      "irq": 28,
+      "overflow_action": "reload",
+      "prescaler_reg": 1073741864,
+      "prescaler_space": "periph",
+      "prescaler_scale": 1,
+      "reload_compare": true
+    },
+    {
+      "name": "TIM3",
+      "counter": {
+        "bits": 16,
+        "lo_reg": 1073742884,
+        "reg_space": "periph",
+        "reload_lo_reg": 1073742892
+      },
+      "enable": {
+        "reg": 1073742848,
+        "bit": 0
+      },
+      "overflow": {
+        "reg": 1073742864,
+        "bit": 0
+      },
+      "irq": 29,
+      "overflow_action": "reload",
+      "prescaler_reg": 1073742888,
+      "prescaler_space": "periph",
+      "prescaler_scale": 1,
+      "reload_compare": true
+    },
+    {
+      "name": "TIM4",
+      "counter": {
+        "bits": 16,
+        "lo_reg": 1073743908,
+        "reg_space": "periph",
+        "reload_lo_reg": 1073743916
+      },
+      "enable": {
+        "reg": 1073743872,
+        "bit": 0
+      },
+      "overflow": {
+        "reg": 1073743888,
+        "bit": 0
+      },
+      "irq": 30,
+      "overflow_action": "reload",
+      "prescaler_reg": 1073743912,
+      "prescaler_space": "periph",
+      "prescaler_scale": 1,
+      "reload_compare": true
+    },
+    {
+      "name": "SYSTICK",
+      "counter": {
+        "bits": 24,
+        "lo_reg": 3758153752,
+        "reg_space": "system",
+        "reload_lo_reg": 3758153748,
+        "up": false
+      },
+      "enable": {
+        "reg": 3758153744,
+        "bit": 0
+      },
+      "overflow": {
+        "reg": 3758153744,
+        "bit": 16
+      },
+      "irq": 100,
+      "overflow_action": "reload",
+      "reload_compare": true
+    }
+  ],
+  "uarts": [
+    {
+      "name": "USART1",
+      "irq": 37,
+      "space": "periph",
+      "ctrl": 1073821696,
+      "data": 1073821700,
+      "tx_flag_bit": 7,
+      "rx_flag_bit": 5,
+      "tx_cycles": 160,
+      "rx_fifo": 8,
+      "clear_tx_on_write": true,
+      "signal_irq_on_rx": true
+    },
+    {
+      "name": "USART2",
+      "irq": 38,
+      "space": "periph",
+      "ctrl": 1073759232,
+      "data": 1073759236,
+      "tx_flag_bit": 7,
+      "rx_flag_bit": 5,
+      "tx_cycles": 160,
+      "rx_fifo": 8,
+      "clear_tx_on_write": true,
+      "signal_irq_on_rx": true
+    },
+    {
+      "name": "USART3",
+      "irq": 39,
+      "space": "periph",
+      "ctrl": 1073760256,
+      "data": 1073760260,
+      "tx_flag_bit": 7,
+      "rx_flag_bit": 5,
+      "tx_cycles": 160,
+      "rx_fifo": 8,
+      "clear_tx_on_write": true,
+      "signal_irq_on_rx": true
+    }
+  ],
+  "spis": [
+    {
+      "name": "SPI1",
+      "irq": 35,
+      "space": "periph",
+      "data": 1073819660,
+      "stat": 1073819656,
+      "ctrl": 1073819648,
+      "done_bit": 0,
+      "busy_bit": 7,
+      "xfer_cycles": 8,
+      "clear_done_on_read": true,
+      "signal_irq_on_done": true,
+      "tx_ready_bit": 1
+    },
+    {
+      "name": "SPI2",
+      "irq": 36,
+      "space": "periph",
+      "data": 1073756172,
+      "stat": 1073756168,
+      "ctrl": 1073756160,
+      "done_bit": 0,
+      "busy_bit": 7,
+      "xfer_cycles": 8,
+      "clear_done_on_read": true,
+      "signal_irq_on_done": true,
+      "tx_ready_bit": 1
+    }
+  ],
+  "adcs": [
+    {
+      "name": "ADC1",
+      "irq": 18,
+      "space": "periph",
+      "ctrl": 1073816584,
+      "cfg": 1073816628,
+      "data": 1073816652,
+      "status": 1073816576,
+      "start_bit": 22,
+      "if_bit": 1,
+      "busy_bit": 255,
+      "conversion_cycles": 96,
+      "channel_mask": 31,
+      "channel_shift": 0,
+      "signal_irq_on_done": true,
+      "channels": [
+        {
+          "channel": 0,
+          "pin": "PA0"
+        },
+        {
+          "channel": 1,
+          "pin": "PA1"
+        },
+        {
+          "channel": 2,
+          "pin": "PA2"
+        },
+        {
+          "channel": 3,
+          "pin": "PA3"
+        },
+        {
+          "channel": 4,
+          "pin": "PA4"
+        },
+        {
+          "channel": 5,
+          "pin": "PA5"
+        },
+        {
+          "channel": 6,
+          "pin": "PA6"
+        },
+        {
+          "channel": 7,
+          "pin": "PA7"
+        },
+        {
+          "channel": 8,
+          "pin": "PB0"
+        },
+        {
+          "channel": 9,
+          "pin": "PB1"
+        }
+      ]
+    }
+  ]
+}
