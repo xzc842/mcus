@@ -667,9 +667,9 @@ const RegisterDesc* Model::find_register(const SpaceId& space, Addr addr) const 
     return &registers[it->second];
 }
 
-const RegisterDesc* Model::find_register_by_name(const std::string& name) const {
+const RegisterDesc* Model::find_register_by_name(const std::string& reg_name) const {
     for (const auto& rd : registers)
-        if (rd.name == name) return &rd;
+        if (rd.name == reg_name) return &rd;
     return nullptr;
 }
 

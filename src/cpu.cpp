@@ -68,7 +68,7 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
             blk.base = r.base;
             blk.data.assign(r.size, 0);
         } else {
-            Addr cur_end = blk.base + blk.data.size();
+            Addr cur_end = blk.base + static_cast<Addr>(blk.data.size());
             Addr new_end = r.base + r.size;
             if (r.base < blk.base) {
                 size_t delta = blk.base - r.base;
@@ -243,7 +243,8 @@ uint16_t Cpu::read16(const SpaceId& space, Addr addr) {
     if (r && r->is_mmio) return static_cast<uint16_t>(handle_mmio_read(space, addr, 16));
     uint16_t v = 0;
     for (int i = 0; i < 2; ++i)
-        v |= static_cast<uint16_t>(read8(space, addr + i)) << (8 * i);
+        v |= static_cast<uint16_t>(
+            static_cast<uint16_t>(read8(space, addr + i)) << (8 * i));
     return v;
 }
 
@@ -1170,7 +1171,9 @@ bool Cpu::check_breakpoint() {
 
     uint32_t count = bh->count.load(std::memory_order_relaxed);
     if (count == 0) return false;
-    if (count > shm_.breakpoint_capacity()) count = shm_.breakpoint_capacity();
+    const uint32_t bp_cap =
+        static_cast<uint32_t>(shm_.breakpoint_capacity());
+    if (count > bp_cap) count = bp_cap;
 
     uint32_t pc = regs_.pc;
     bool sorted = bh->sorted.load(std::memory_order_relaxed) != 0;

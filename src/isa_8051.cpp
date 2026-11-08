@@ -1066,7 +1066,8 @@ private:
     void add_a(MemoryBus& bus, uint8_t src, bool with_carry) {
         uint8_t a = read_acc(bus);
         uint8_t c = with_carry ? (read_cy(bus) ? 1 : 0) : 0;
-        uint16_t r = static_cast<uint16_t>(a) + src + c;
+        uint16_t r = static_cast<uint16_t>(
+            static_cast<uint16_t>(a) + src + c);
         uint8_t result = static_cast<uint8_t>(r & 0xFF);
         write_cy(bus, (r > 0xFF) ? 1 : 0);
         write_ac(bus, (((a & 0x0F) + (src & 0x0F) + c) > 0x0F) ? 1 : 0);
