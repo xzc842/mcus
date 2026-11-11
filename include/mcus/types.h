@@ -44,7 +44,8 @@ struct PinEvent {
     uint32_t value;
     uint32_t function;
     uint32_t direction;
-    uint32_t changed;
+    uint32_t changed;       // bit0=value, bit1=function, bit2=direction, bit3=脉宽有效
+    uint32_t pulse_width;   // 上一电平持续虚拟周期数，changed bit3 置位时有效
 };
 
 enum class BusEventKind : uint8_t {
@@ -61,6 +62,7 @@ enum class BusEventKind : uint8_t {
     AdcSample = 10,
     EncoderDelta = 11,
     PwmCapture = 12,
+    PulseWidth = 13,   // 外部 -> MCU：向指定 GPIO 注入一个指定宽度的脉冲
 };
 
 enum class BusDirection : uint8_t { ToHost = 0, ToMcu = 1 };

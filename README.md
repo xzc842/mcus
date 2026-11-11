@@ -58,7 +58,8 @@ UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)，ARM
 
 - UART、SPI、I2C、CAN、USB；
 - ADC、DAC、PWM、正交编码器；
-- GPIO 脉宽输入和 GPIO 波形输出；
+- 所有 GPIO 的脉宽输入（`PinEvent.pulse_width`），并支持外部通过 `PulseWidth` 事件直接输入波宽；
+- GPIO 波形输出；
 - 模型驱动的引脚复用（`pins[].mux_*`）。
 
 字段、事件格式和示例见 [docs/interfaces.md](docs/interfaces.md)。

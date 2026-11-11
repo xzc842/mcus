@@ -224,7 +224,7 @@ target_link_libraries(my_isa PRIVATE mcus_isa_sdk)
 
 ### `ISA ABI mismatch`
 
-`kIsaAbiVersion` 已升级。重新编译插件：
+`kIsaAbiVersion` 与插件不一致。重新编译插件：
 
 ```bash
 cmake --build build --target mcus_isa_8051 mcus_isa_arm -j

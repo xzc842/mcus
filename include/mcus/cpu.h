@@ -145,11 +145,14 @@ private:
     void emit_mmio_event(const SpaceId& space, Addr addr, uint32_t value,
                          uint8_t width);
     void update_pin(size_t index, uint32_t value, uint32_t function,
-                    uint32_t direction);
+                    uint32_t direction, bool force = false);
+    void inject_pulse(size_t pin, uint32_t width, uint32_t level);
+    void service_pulses();
     void sync_pins_for_register(const SpaceId& space, Addr addr,
                                 uint32_t value);
     void sync_pin_mux(const SpaceId& space, Addr addr, uint32_t value);
     void on_pin_change(size_t index, uint32_t value);
+    bool pin_width(size_t index, uint32_t& width);
     void update_wave(size_t index);
     void start_wave(size_t index, uint32_t value);
     void stop_wave(size_t index);
@@ -182,6 +185,7 @@ private:
     uint32_t function_index(const PinDesc& pin, const std::string& name) const;
 
     VirtTime now_ = 0;
+    std::vector<VirtTime> pin_last_edge_;
     std::vector<uint32_t> last_pin_value_;
     std::vector<uint32_t> last_pin_function_;
     std::vector<uint32_t> last_pin_direction_;
@@ -234,6 +238,16 @@ private:
         bool armed = false;
         VirtTime start = 0;
     };
+    struct PulseIn {
+        uint32_t width = 0;
+        uint32_t level = 0;   // 脉冲起始电平
+    };
+    struct PulseRuntime {
+        std::deque<PulseIn> queue;
+        bool active = false;
+        VirtTime end = 0;
+        uint32_t start_level = 0;
+    };
     struct WaveRuntime {
         bool active = false;
         uint32_t level = 0;
@@ -254,9 +268,10 @@ private:
     std::vector<EncoderRuntime> encoder_rt_;
     std::vector<CaptureRuntime> capture_rt_;
     std::vector<WaveRuntime> wave_rt_;
+    std::vector<PulseRuntime> pulse_rt_;
     std::unordered_map<uint32_t, uint32_t> adc_stream_samples_;
     uint32_t next_bus_xfer_id_ = 1;
-    uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY, 128=GPIO WAVE
+    uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY, 128=GPIO WAVE, 256=PULSE IN
 
     uint32_t last_bp_pc_ = 0xFFFFFFFF;
 };

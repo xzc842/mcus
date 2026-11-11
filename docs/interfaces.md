@@ -16,7 +16,8 @@ mcus 的所有外部接口都通过共享内存事件流（`DebugEvent`）与外
 | DAC | `BusEvent(DacWrite)` | 输出 | 写数据寄存器产生转换值事件 |
 | PWM | `PinEvent` + PWM 寄存器 | 输出 | 已有 PWM 波形输出 |
 | 正交编码器 | `PinEvent` / `BusEvent(EncoderDelta)` | 输入 | A/B 相解码并更新计数 |
-| GPIO 脉宽输入 | `BusEvent(PwmCapture)` | 输入 | 测量高/低电平宽度 |
+| GPIO 脉宽输入 | `PinEvent.pulse_width` / `PwmCapture` | 输入 | 所有 GPIO 可直接读脉宽；`captures[]` 可写寄存器/触发中断 |
+| 外部输入波宽 | `BusEvent(PulseWidth)` | 外部 → MCU | 向任意 GPIO 注入指定宽度的脉冲 |
 | GPIO 波形输出 | `PinEvent` | 输出 | 按 period/high 产生方波 |
 
 `BusEventKind` 定义在 `include/mcus/types.h`；事件流布局和 attach 见
@@ -68,6 +69,52 @@ mcus 的所有外部接口都通过共享内存事件流（`DebugEvent`）与外
 - `PwmCapture(ToHost)`：`data[0..3]` 为脉冲宽度（虚拟周期），`bus_id` 为 capture 索引；
 - `measure_high=true` 测高电平，`false` 测低电平；
 - 宽度写入模型 `width` 寄存器，可配置 `irq`。
+
+### GPIO 脉宽（所有引脚）
+
+所有 GPIO 的 `PinEvent` 都带脉宽信息，不需要在模型里为每个引脚写 `captures`：
+
+```c
+struct PinEvent {
+    uint32_t pin_id;
+    uint32_t value;
+    uint32_t function;
+    uint32_t direction;
+    uint32_t changed;       // bit3=1 表示 pulse_width 有效
+    uint32_t pulse_width;   // 上一个电平持续的虚拟周期数
+};
+```
+
+- 上升沿（`value=1`）报告上一个低电平宽度；
+- 下降沿（`value=0`）报告上一个高电平宽度；
+- 第一次边沿没有前一条边，`changed.bit3=0`；
+- 所有 GPIO 每步采样，因此窄脉冲也能被记录；
+- 需要写寄存器/触发中断时再配置 `captures[]`；只读取脉宽直接用 `PinEvent`。
+
+### 外部输入波宽
+
+外部程序可以直接向任意 GPIO 注入一个指定宽度的脉冲，不需要自己按虚拟时间翻转引脚：
+
+```cpp
+BusEvent b{};
+b.bus_id = pin_index;              // Model::pins 下标
+b.kind = static_cast<uint8_t>(BusEventKind::PulseWidth);
+b.direction = static_cast<uint8_t>(BusDirection::ToMcu);
+b.flags = 1;                       // bit0=1 高脉冲，0 低脉冲
+b.len = 4;
+uint32_t width = 70;               // 虚拟周期
+std::memcpy(b.data, &width, 4);
+// 放进 in 环
+```
+
+模拟器会：
+
+1. 在当前虚拟时间把引脚驱动到脉冲起始电平；
+2. 经过 `width` 个虚拟周期后驱动到相反电平；
+3. 通过 `PinEvent.pulse_width` 和 `captures[]` 的 `PwmCapture` 给出测量结果。
+
+`PulseWidth` 的 `bus_id` 是引脚号，不是 capture 索引；同一引脚连续输入多个脉冲会排队执行。
+这与直接写 `PinState.value` 等价，但宽度由事件参数精确指定，不需要外部程序自己计时。
 
 ### GPIO 波形输出
 
@@ -181,6 +228,6 @@ stream.push_in(ev);
 - CAN 只提供单帧收发，不含邮箱、过滤器和总线错误；
 - DAC 只输出数字事件，不产生模拟电压；
 - 编码器按 A/B 四相跳变解码，不模拟机械抖动；
-- 脉宽输入以虚拟周期为单位，捕获值写入单个寄存器；
+- 所有 GPIO 的脉宽单位为虚拟周期；`PinEvent` 结构增加了 `pulse_width` 字段，外部程序需要重新编译；
 - GPIO 波形输出是简单方波，不模拟死区、互补输出和任意波形；
 - 所有接口的数据都必须通过事件流，外部程序不要直接改外设内部状态。

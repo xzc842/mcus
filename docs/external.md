@@ -484,6 +484,11 @@ if (stream.pop(req) && req.type == mcus::DebugEventType::Bus &&
 - `AdcSample`
 - `EncoderDelta`
 - `PwmCapture`
+- `PulseWidth`（外部向 GPIO 注入指定宽度的脉冲，`bus_id=pin_id`，`flags.bit0=电平`）
+
+所有 `PinEvent` 都带 `pulse_width` 字段：`changed` bit3 置位时，表示上一个电平持续的虚拟周期数。
+外部程序也可以用 `PulseWidth` 事件直接向任意 GPIO 输入一个指定宽度的脉冲，无需自己按时间翻转引脚。
+完整字段见 [docs/interfaces.md](interfaces.md)。
 
 ### 10.5 USB 包事件
 
@@ -661,10 +666,10 @@ int main() {
 
 ## 15. 兼容性说明
 
-- 共享内存的 `ControlBlock`、`PinState`、`Inject*`、`Breakpoint*`、事件流 `Header` 和 `DebugEvent` 布局未变，直接 mmap 的外部程序不需要改布局；
+- 共享内存的 `ControlBlock`、`PinState`、`Inject*`、`Breakpoint*` 和事件流 `Header` 布局未变；`PinEvent` 增加了 `pulse_width` 字段，`DebugEvent` 大小变化，直接 mmap 事件流的外部程序需要按当前头文件重新编译；
 - 使用 C++ `SharedMemory`/`EventStream` 类的外部程序需要按当前头文件重新编译（类新增了私有缓存成员，类大小变了）；
 - `EventStream::push_in()` 会置 `host_attached`；模拟器只在 `host_attached=1` 时轮询 in 环。直接 mmap 写 in 环的外部程序必须自己把 `Header.host_attached` 置 1；
-- 无 `gpio_irq` 的模型引脚采样间隔为 16 步，外部引脚注入最多延迟 16 条指令。
+- 所有 GPIO 每步采样，外部引脚注入和脉宽测量最多延迟 1 条指令。
 
 ## 16. 注意事项
 
@@ -674,7 +679,7 @@ int main() {
 4. **事件流有 out/in 两个环：外部程序 `pop()` 消费 out、`push_in()` 生产 in；两个环的 `head`/`tail` 都是 `uint64_t`，满时分别置 `backpressure_out`/`backpressure_in`；**
 5. **中断位图 `bm[i] |= (1 << b)`，外部程序写，模拟器 `check_interrupt` 读，`enter_interrupt` 清；**
 6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序可写 `value` 注入电平，模拟器端口读会把 `value` 叠加回寄存器；`direction=0` 时输入引脚变化还会触发 GPIO 边沿中断；**
-7. **没有 `gpio_irq` 的模型默认每 16 步采样一次引脚，外部输入变化最多延迟 16 条指令；需要逐指令 GPIO 边沿时请在模型中配置 `gpio_irq`；**
+7. **所有 GPIO 每步采样；`PinEvent.pulse_width` 记录上一个电平宽度，外部输入变化最多延迟 1 条指令；**
 8. **断点区 `bh->count`/`sorted`/`min_addr`/`max_addr` 写完后，`hit=0`，`Resume`，模拟器 `check_breakpoint` 二分查；**
 9. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点；**
 10. **SPI 是同步总线：外部程序 attach 事件流后，模拟器会冻结 CPU 等待 `SpiXfer(ToMcu)` 响应；建议 `start_paused=true`，attach 后先 `Resume`，避免第一次传输用默认 MISO 抢跑；**

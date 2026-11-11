@@ -28,6 +28,16 @@ bool pop_kind(EventStream& s, BusEventKind kind, BusEvent& out) {
     }
     return false;
 }
+bool pop_pin(EventStream& s, uint32_t pin, PinEvent& out) {
+    DebugEvent ev{};
+    while (s.pop(ev)) {
+        if (ev.type == DebugEventType::Pin && ev.u.pin.pin_id == pin) {
+            out = ev.u.pin;
+            return true;
+        }
+    }
+    return false;
+}
 void push_bus(EventStream& s, BusEventKind kind, BusDirection dir,
               uint32_t bus_id, const uint8_t* data, uint16_t len,
               uint8_t flags = 0) {
@@ -143,7 +153,37 @@ int main() {
         assert(shm.read_reg("mmio", kMmio + 0x40, 32) == 4);
         assert(pop_kind(stream, BusEventKind::EncoderDelta, b));
 
-        // GPIO 脉宽输入：高电平宽度。
+        // 任意 GPIO 都能通过 PinEvent 读取脉宽；PA6 不在 captures 数组里。
+        pins[6].value.store(1, std::memory_order_relaxed);
+        cpu.step();
+        cpu.advance_peripherals(50);
+        pins[6].value.store(0, std::memory_order_relaxed);
+        cpu.step();
+        PinEvent pev{};
+        bool got_width = false;
+        while (pop_pin(stream, 6, pev)) {
+            if (pev.changed & 8u) {
+                got_width = true;
+                break;
+            }
+        }
+        assert(got_width);
+        assert(pev.pulse_width >= 50);
+
+        // 外部程序通过事件直接注入一个指定宽度的脉冲。
+        uint8_t pulse_data[4];
+        uint32_t injected_width = 70;
+        std::memcpy(pulse_data, &injected_width, 4);
+        push_bus(stream, BusEventKind::PulseWidth, BusDirection::ToMcu, 2,
+                 pulse_data, 4, 1); // pin=PA2, high pulse
+        cpu.step();
+        cpu.advance_peripherals(injected_width);
+        const uint32_t cap_width =
+            shm.read_reg("mmio", kMmio + 0x50, 32);
+        assert(cap_width >= injected_width);
+        assert(pop_kind(stream, BusEventKind::PwmCapture, b));
+
+        // 传统方式：直接驱动 GPIO 电平，同样能测宽。
         pins[2].value.store(1, std::memory_order_relaxed);
         cpu.step();
         cpu.advance_peripherals(100);

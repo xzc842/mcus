@@ -104,7 +104,8 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
     ctl_ = shm_.control();
     pins_ = shm_.pins();
     // 有 GPIO 边沿中断的模型每步采样；纯轮询模型可低频采样以降低开销。
-    pin_poll_interval_ = model_.gpio_irq.present ? 1u : 16u;
+    // 所有 GPIO 都可作为脉宽输入，因此每步采样全部引脚。
+    pin_poll_interval_ = 1u;
     for (const auto& e : model_.encoders) {
         if (e.a_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.a_pin));
         if (e.b_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.b_pin));
@@ -263,6 +264,8 @@ void Cpu::reset() {
     last_pin_value_.assign(n, 0);
     last_pin_function_.assign(n, 0);
     last_pin_direction_.assign(n, 0);
+    pin_last_edge_.assign(n, UINT64_MAX);
+    pulse_rt_.assign(n, PulseRuntime{});
     for (size_t i = 0; i < n; ++i) {
         const PinDesc& pd = model_.pins[i];
         uint32_t value = 0;
@@ -498,10 +501,10 @@ void Cpu::emit_mmio_event(const SpaceId& space, Addr addr, uint32_t value,
 }
 
 void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
-                     uint32_t direction) {
+                     uint32_t direction, bool force) {
     PinState* pins = pins_;
     const uint32_t old_value = pins[index].value.load();
-    if (pins[index].external.load()) {
+    if (!force && pins[index].external.load()) {
         // 外部调试程序写入的电平优先于 CPU 对端口锁存器的读写。
         value = old_value;
     }
@@ -515,6 +518,8 @@ void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
     if (changed == 0) return;
 
     const bool value_changed = (old_value != value);
+    uint32_t width = 0;
+    const bool width_valid = value_changed ? pin_width(index, width) : false;
     pins[index].value.store(value);
     pins[index].function.store(function);
     pins[index].direction.store(direction);
@@ -524,7 +529,9 @@ void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
     ev.time = now_;
     ev.type = DebugEventType::Pin;
     ev.u.pin = PinEvent{static_cast<uint32_t>(index), value, function,
-                        direction, changed};
+                        direction,
+                        static_cast<uint32_t>(changed | (width_valid ? 8u : 0u)),
+                        width};
     if (!stream_.push(ev)) MCUS_WARN("event stream full");
 
     if (index < last_pin_value_.size()) {
@@ -655,6 +662,14 @@ void Cpu::sync_pin_mux(const SpaceId& space, Addr addr, uint32_t value) {
     }
 }
 
+bool Cpu::pin_width(size_t index, uint32_t& width) {
+    if (index >= pin_last_edge_.size()) return false;
+    const bool valid = pin_last_edge_[index] != UINT64_MAX;
+    if (valid) width = static_cast<uint32_t>(now_ - pin_last_edge_[index]);
+    pin_last_edge_[index] = now_;
+    return valid;
+}
+
 void Cpu::on_pin_change(size_t index, uint32_t value) {
     for (size_t i = 0; i < model_.encoders.size(); ++i) {
         const EncoderDesc& e = model_.encoders[i];
@@ -742,6 +757,42 @@ void Cpu::stop_wave(size_t index) {
     if (w.pin >= 0 && w.pin < static_cast<int>(model_.pins.size()))
         update_pin(static_cast<size_t>(w.pin), 0,
                    pins_[w.pin].function.load(), pins_[w.pin].direction.load());
+}
+
+void Cpu::inject_pulse(size_t pin, uint32_t width, uint32_t level) {
+    if (pin >= model_.pins.size()) return;
+    PulseRuntime& rt = pulse_rt_[pin];
+    rt.queue.push_back(PulseIn{width, level & 1u});
+    periph_active_ |= 256u;
+    service_pulses();
+}
+
+void Cpu::service_pulses() {
+    for (size_t i = 0; i < pulse_rt_.size(); ++i) {
+        PulseRuntime& rt = pulse_rt_[i];
+        // 先完成到期的脉冲；同一步内允许连续完成多个。
+        while (rt.active && now_ >= rt.end) {
+            const uint32_t end_level = rt.start_level ? 0u : 1u;
+            update_pin(i, end_level, pins_[i].function.load(),
+                       pins_[i].direction.load(), true);
+            rt.active = false;
+        }
+        while (!rt.active && !rt.queue.empty()) {
+            PulseIn p = rt.queue.front();
+            rt.queue.pop_front();
+            rt.start_level = p.level;
+            update_pin(i, p.level, pins_[i].function.load(),
+                       pins_[i].direction.load(), true);
+            if (p.width == 0) {
+                update_pin(i, p.level ? 0u : 1u, pins_[i].function.load(),
+                           pins_[i].direction.load(), true);
+                continue;
+            }
+            rt.active = true;
+            rt.end = now_ + p.width;
+            break;
+        }
+    }
 }
 
 void Cpu::update_wave(size_t index) {
@@ -1129,6 +1180,7 @@ void Cpu::complete_tkey(size_t index) {
 
 void Cpu::advance_peripherals(VirtTime delta) {
     now_ += delta;
+    service_pulses();
     if (periph_active_ == 0) return;
 
     for (size_t i = 0; i < uart_rt_.size(); ++i) {
@@ -1189,6 +1241,8 @@ void Cpu::advance_peripherals(VirtTime delta) {
     for (const auto& rt : adc_rt_) if (rt.busy) active |= 8u;
     for (const auto& rt : tkey_rt_) if (rt.busy) active |= 16u;
     for (const auto& rt : wave_rt_) if (rt.active) active |= 128u;
+    for (const auto& rt : pulse_rt_)
+        if (rt.active || !rt.queue.empty()) active |= 256u;
     periph_active_ = active;
 }
 
@@ -1293,6 +1347,14 @@ void Cpu::poll_bus_in() {
                 const uint8_t channel = b.flags;
                 adc_stream_samples_[(static_cast<uint32_t>(b.bus_id) << 8) |
                                     channel] = sample;
+            } else if (kind == BusEventKind::PulseWidth &&
+                       b.direction ==
+                           static_cast<uint8_t>(BusDirection::ToMcu)) {
+                if (b.len >= 4 && b.bus_id < model_.pins.size()) {
+                    uint32_t width = 0;
+                    std::memcpy(&width, b.data, 4);
+                    inject_pulse(b.bus_id, width, b.flags & 1u);
+                }
             } else if (kind == BusEventKind::EncoderDelta &&
                        b.direction ==
                            static_cast<uint8_t>(BusDirection::ToMcu)) {
@@ -1402,11 +1464,13 @@ void Cpu::poll_external_pins() {
             pins[i].function.load(std::memory_order_relaxed);
         const uint32_t direction =
             pins[i].direction.load(std::memory_order_relaxed);
+        uint32_t width = 0;
+        const bool width_valid = pin_width(i, width);
         DebugEvent ev{};
         ev.time = now_;
         ev.type = DebugEventType::Pin;
         ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function,
-                            direction, 1};
+                            direction, 1u | (width_valid ? 8u : 0u), width};
         if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
         last_pin_value_[i] = value;
         last_pin_function_[i] = function;
@@ -1450,7 +1514,7 @@ void Cpu::poll_external_pins() {
             ev.time = now_;
             ev.type = DebugEventType::Pin;
             ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function,
-                                direction, 2};
+                                direction, 2, 0};
             if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
             last_pin_function_[i] = function;
         }
@@ -1460,7 +1524,7 @@ void Cpu::poll_external_pins() {
             ev.time = now_;
             ev.type = DebugEventType::Pin;
             ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function,
-                                direction, 4};
+                                direction, 4, 0};
             if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
             last_pin_direction_[i] = direction;
         }

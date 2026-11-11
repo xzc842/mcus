@@ -265,7 +265,7 @@ CPU 核心：
 - `handle_mmio_read` 按别名选语义，端口读叠加 `PinState.value`，读清零后清零，并调用外设读侧效应。
 - `advance_peripherals`：推进 UART 发送、SPI 完成、PWM 计数/引脚、ADC 转换、TKEY 扫描。
 - `poll_bus_in`：消费 in 环的 UART RX、SPI MISO、USB SETUP/IN/OUT/Reset。
-- `poll_external_pins`：检测外部 `PinState` 变化，发 Pin 事件并触发 GPIO 边沿中断；有 `gpio_irq` 的模型每步采样，否则每 16 步采样一次。
+- `poll_external_pins`：每步检测外部 `PinState` 变化，发 Pin 事件、计算脉宽并触发 GPIO 边沿中断。
 - `check_inject_slots` 消费注入区。
 - `check_interrupt` 检查挂起位和中断位图；同号/同级中断在服务期间屏蔽，避免中断风暴。
 - `enter_interrupt` 保存上下文、压 PC、按 `clear_pending` 清挂起位、跳向量，并记录服务状态。
