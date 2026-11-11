@@ -409,6 +409,9 @@ struct Model {
     std::string arch = "mcus-minimal";
     uint32_t crystal_hz = 0;
     uint32_t cycles_per_instruction = 1;
+    // 引脚全量采样间隔（指令数）。外部 hold 的引脚始终每步采样；
+    // 该值只影响其余引脚的兜底扫描频率。
+    uint32_t pin_poll_interval = 16;
     Addr reset_vector = 0;
     SpaceId reset_space;
     Addr initial_sp = 0;

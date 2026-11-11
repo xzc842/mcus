@@ -50,6 +50,7 @@ models/
 | `arch` | string | ISA 名，`"8051"`/`"arm"`/`"mcus-minimal"`/自定义 |
 | `crystal_hz` | uint32 | 虚拟晶振频率（Hz） |
 | `cycles_per_instruction` | uint32 | 每条指令粗略虚拟耗时，默认 1 |
+| `pin_poll_interval` | uint32 | 引脚全量采样间隔（指令数），默认 16；外部 hold 的引脚和 `gpio_irq` 模型仍每步采样 |
 | `isa_extensions` | string[] | ISA 扩展名，如 `wch_dptr1_movx` |
 | `arch_desc` | object | 架构级描述，见第 3 节 |
 | `regions` | object[] | 地址空间，见第 4 节 |

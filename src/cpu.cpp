@@ -104,18 +104,10 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
     ctl_ = shm_.control();
     pins_ = shm_.pins();
     pin_hold_ = shm_.pin_hold();
-    // 所有 GPIO 都支持脉宽输入，必须每步采样。
-    pin_poll_interval_ = 1u;
-    for (const auto& e : model_.encoders) {
-        if (e.a_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.a_pin));
-        if (e.b_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.b_pin));
-    }
-    for (const auto& c : model_.captures)
-        if (c.pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(c.pin));
-    std::sort(fast_pin_indices_.begin(), fast_pin_indices_.end());
-    fast_pin_indices_.erase(
-        std::unique(fast_pin_indices_.begin(), fast_pin_indices_.end()),
-        fast_pin_indices_.end());
+    // 有 GPIO 边沿中断的模型必须每步采样；其余模型只每步采样外部 hold 的
+    // 引脚（见 poll_external_pins），全量兜底扫描按模型配置降频。
+    pin_poll_interval_ =
+        model_.gpio_irq.present ? 1u : std::max<uint32_t>(1, model_.pin_poll_interval);
     irq_bitmap_ = shm_.interrupt_bitmap();
     irq_bitmap_size_ = shm_.interrupt_bitmap_size();
     inject_header_ = shm_.inject_header();
@@ -266,6 +258,8 @@ void Cpu::reset() {
     last_pin_direction_.assign(n, 0);
     pin_last_edge_.assign(n, UINT64_MAX);
     pulse_rt_.assign(n, PulseRuntime{});
+    pulse_pins_.clear();
+    pulse_queued_.assign(n, 0);
     for (size_t i = 0; i < n; ++i) {
         const PinDesc& pd = model_.pins[i];
         uint32_t value = 0;
@@ -762,12 +756,22 @@ void Cpu::inject_pulse(size_t pin, uint32_t width, uint32_t level) {
     if (pin >= model_.pins.size()) return;
     PulseRuntime& rt = pulse_rt_[pin];
     rt.queue.push_back(PulseIn{width, level & 1u});
+    if (pulse_queued_.size() < model_.pins.size())
+        pulse_queued_.resize(model_.pins.size(), 0);
+    if (!pulse_queued_[pin]) {
+        pulse_queued_[pin] = 1;
+        pulse_pins_.push_back(static_cast<uint32_t>(pin));
+    }
     periph_active_ |= 256u;
     service_pulses();
 }
 
 void Cpu::service_pulses() {
-    for (size_t i = 0; i < pulse_rt_.size(); ++i) {
+    if (pulse_pins_.empty()) return;
+    // 只扫描有排队/激活脉冲的引脚；完成的引脚原地压缩移除。
+    size_t write = 0;
+    for (size_t k = 0; k < pulse_pins_.size(); ++k) {
+        const size_t i = pulse_pins_[k];
         PulseRuntime& rt = pulse_rt_[i];
         // 先完成到期的脉冲；同一步内允许连续完成多个。
         while (rt.active && now_ >= rt.end) {
@@ -791,7 +795,13 @@ void Cpu::service_pulses() {
             rt.end = now_ + p.width;
             break;
         }
+        if (rt.active || !rt.queue.empty()) {
+            pulse_pins_[write++] = static_cast<uint32_t>(i);
+        } else {
+            pulse_queued_[i] = 0;
+        }
     }
+    pulse_pins_.resize(write);
 }
 
 void Cpu::update_wave(size_t index) {
@@ -1240,8 +1250,7 @@ void Cpu::advance_peripherals(VirtTime delta) {
     for (const auto& rt : adc_rt_) if (rt.busy) active |= 8u;
     for (const auto& rt : tkey_rt_) if (rt.busy) active |= 16u;
     for (const auto& rt : wave_rt_) if (rt.active) active |= 128u;
-    for (const auto& rt : pulse_rt_)
-        if (rt.active || !rt.queue.empty()) active |= 256u;
+    if (!pulse_pins_.empty()) active |= 256u;
     periph_active_ = active;
 }
 
@@ -1453,55 +1462,47 @@ void Cpu::poll_bus_in() {
 
 void Cpu::poll_external_pins() {
     PinState* pins = pins_;
-
-    auto process_value = [&](size_t i) {
-        if (i >= last_pin_value_.size()) return;
-        const uint32_t value = pins[i].value.load(std::memory_order_relaxed);
-        if (value == last_pin_value_[i]) return;
-        const PinDesc& pd = model_.pins[i];
-        const uint32_t function =
-            pins[i].function.load(std::memory_order_relaxed);
-        const uint32_t direction =
-            pins[i].direction.load(std::memory_order_relaxed);
-        uint32_t width = 0;
-        const bool width_valid = pin_width(i, width);
-        DebugEvent ev{};
-        ev.time = now_;
-        ev.type = DebugEventType::Pin;
-        ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function,
-                            direction, 1u | (width_valid ? 8u : 0u), width};
-        if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
-        last_pin_value_[i] = value;
-        last_pin_function_[i] = function;
-        last_pin_direction_[i] = direction;
-        on_pin_change(i, value);
-
-        // 外部驱动的输入引脚变化 -> GPIO 边沿中断。
-        if (model_.gpio_irq.present && direction == 0 && function == 0 &&
-            pd.source_reg != 0 && model_.gpio_irq.enable_bits != 0) {
-            const uint32_t en = read_reg8(model_.gpio_irq.enable_space,
-                                          model_.gpio_irq.enable_reg);
-            const uint32_t bit =
-                (pd.number - model_.gpio_irq.enable_bit_base) %
-                model_.gpio_irq.enable_bits;
-            if (en & (1u << bit))
-                set_irq_pending(model_.gpio_irq.irq);
-        }
-    };
+    const size_t pin_count = model_.pins.size();
 
     const bool full = (pin_poll_skip_ == 0);
     if (full) pin_poll_skip_ = pin_poll_interval_ - 1;
     else --pin_poll_skip_;
 
-    // 编码器/捕获引脚每步采样；其他引脚按 pin_poll_interval_ 降频。
+    // 非全量步：只采样外部 hold 的引脚。hold 位图按 64 位块扫描，
+    // 没有外部驱动时几乎零开销。
     if (!full && pin_poll_interval_ > 1) {
-        for (uint32_t idx : fast_pin_indices_) process_value(idx);
+        if (pin_hold_) {
+            size_t base = 0;
+            for (; base + 8 <= pin_count; base += 8) {
+                uint64_t word;
+                std::memcpy(&word, pin_hold_ + base, sizeof(word));
+                while (word) {
+                    const size_t i =
+                        base + static_cast<unsigned>(__builtin_ctzll(word));
+                    const uint32_t value =
+                        pins[i].value.load(std::memory_order_relaxed);
+                    if (value != last_pin_value_[i])
+                        handle_external_pin_change(i, value);
+                    word &= word - 1;
+                }
+            }
+            for (; base < pin_count; ++base) {
+                if (!pin_hold_[base]) continue;
+                const uint32_t value =
+                    pins[base].value.load(std::memory_order_relaxed);
+                if (value != last_pin_value_[base])
+                    handle_external_pin_change(base, value);
+            }
+        }
         return;
     }
 
     const bool slow = (pin_slow_counter_++ & 0x3Fu) == 0;
-    for (size_t i = 0; i < model_.pins.size(); ++i) {
-        process_value(i);
+    for (size_t i = 0; i < pin_count; ++i) {
+        const uint32_t current =
+            pins[i].value.load(std::memory_order_relaxed);
+        if (current != last_pin_value_[i])
+            handle_external_pin_change(i, current);
         if (!slow) continue;
         const PinDesc& pd = model_.pins[i];
         const uint32_t value = pins[i].value.load(std::memory_order_relaxed);
@@ -1528,6 +1529,37 @@ void Cpu::poll_external_pins() {
             last_pin_direction_[i] = direction;
         }
         (void)pd;
+    }
+}
+
+void Cpu::handle_external_pin_change(size_t i, uint32_t value) {
+    if (i >= last_pin_value_.size()) return;
+    PinState* pins = pins_;
+    const PinDesc& pd = model_.pins[i];
+    const uint32_t function = pins[i].function.load(std::memory_order_relaxed);
+    const uint32_t direction = pins[i].direction.load(std::memory_order_relaxed);
+    uint32_t width = 0;
+    const bool width_valid = pin_width(i, width);
+    DebugEvent ev{};
+    ev.time = now_;
+    ev.type = DebugEventType::Pin;
+    ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function, direction,
+                        1u | (width_valid ? 8u : 0u), width};
+    if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
+    last_pin_value_[i] = value;
+    last_pin_function_[i] = function;
+    last_pin_direction_[i] = direction;
+    on_pin_change(i, value);
+
+    // 外部驱动的输入引脚变化 -> GPIO 边沿中断。
+    if (model_.gpio_irq.present && direction == 0 && function == 0 &&
+        pd.source_reg != 0 && model_.gpio_irq.enable_bits != 0) {
+        const uint32_t en = read_reg8(model_.gpio_irq.enable_space,
+                                      model_.gpio_irq.enable_reg);
+        const uint32_t bit =
+            (pd.number - model_.gpio_irq.enable_bit_base) %
+            model_.gpio_irq.enable_bits;
+        if (en & (1u << bit)) set_irq_pending(model_.gpio_irq.irq);
     }
 }
 

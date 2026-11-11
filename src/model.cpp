@@ -85,6 +85,8 @@ Model Model::load_from_file(const std::string& path) {
     m.arch = str(j, "arch", "mcus-minimal");
     m.crystal_hz = u32(j, "crystal_hz");
     m.cycles_per_instruction = std::max<uint32_t>(1, u32(j, "cycles_per_instruction", 1));
+    m.pin_poll_interval =
+        std::clamp<uint32_t>(u32(j, "pin_poll_interval", 16), 1, 1024);
     m.reset_vector = u32(j, "reset_vector");
     // 不在核心里给某个架构的默认空间名；模型必须显式声明。
     m.reset_space = str(j, "reset_space");

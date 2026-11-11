@@ -101,3 +101,35 @@ target_link_libraries(test_interfaces PRIVATE mcus_core)
 target_compile_definitions(test_interfaces PRIVATE
     MCUS_TEST_INTERFACE_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/interface_test.json")
 add_test(NAME interfaces COMMAND test_interfaces)
+
+add_executable(test_simulator_timer test_simulator_timer.cpp)
+target_link_libraries(test_simulator_timer PRIVATE mcus_core)
+target_compile_definitions(test_simulator_timer PRIVATE
+    MCUS_TEST_STC90C51_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stc90c51.json"
+    MCUS_BIN_PATH="$<TARGET_FILE:mcus>"
+    MCUS_ISA_PATH="$<TARGET_FILE:mcus_isa_8051>")
+add_test(NAME simulator_timer COMMAND test_simulator_timer)
+add_test(NAME simulator_timer_batch COMMAND test_simulator_timer 64)
+add_test(NAME simulator_timer1 COMMAND test_simulator_timer 1 1)
+add_test(NAME simulator_timer2 COMMAND test_simulator_timer 1 2)
+
+add_executable(test_stm32_peripherals test_stm32_peripherals.cpp)
+target_link_libraries(test_stm32_peripherals PRIVATE mcus_core mcus_isa_arm)
+target_compile_definitions(test_stm32_peripherals PRIVATE
+    MCUS_TEST_ARM_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stm32f103c8t6.json")
+add_test(NAME stm32_peripherals COMMAND test_stm32_peripherals)
+
+add_executable(test_timer_engine test_timer_engine.cpp)
+target_link_libraries(test_timer_engine PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_timer_engine PRIVATE
+    MCUS_TEST
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json")
+add_test(NAME timer_engine COMMAND test_timer_engine)
+
+add_executable(test_timer_engine_arm test_timer_engine.cpp)
+target_link_libraries(test_timer_engine_arm PRIVATE mcus_core mcus_isa_arm)
+target_compile_definitions(test_timer_engine_arm PRIVATE
+    MCUS_TEST
+    MCUS_TEST_ARM
+    MCUS_TEST_ARM_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stm32f103c8t6.json")
+add_test(NAME timer_engine_arm COMMAND test_timer_engine_arm)

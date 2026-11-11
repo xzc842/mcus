@@ -153,6 +153,7 @@ private:
                                 uint32_t value);
     void sync_pin_mux(const SpaceId& space, Addr addr, uint32_t value);
     void on_pin_change(size_t index, uint32_t value);
+    void handle_external_pin_change(size_t index, uint32_t value);
     bool pin_width(size_t index, uint32_t& width);
     void update_wave(size_t index);
     void start_wave(size_t index, uint32_t value);
@@ -192,7 +193,6 @@ private:
     std::vector<uint32_t> last_pin_direction_;
     uint32_t pin_poll_skip_ = 0;
     uint32_t pin_poll_interval_ = 1;
-    std::vector<uint32_t> fast_pin_indices_;
     uint32_t pin_slow_counter_ = 0;
     uint32_t last_reported_pc_ = 0xFFFFFFFF;
 
@@ -270,6 +270,9 @@ private:
     std::vector<CaptureRuntime> capture_rt_;
     std::vector<WaveRuntime> wave_rt_;
     std::vector<PulseRuntime> pulse_rt_;
+    // 只有排队/激活的引脚才参与 service_pulses 扫描，空闲时每步零开销。
+    std::vector<uint32_t> pulse_pins_;
+    std::vector<uint8_t> pulse_queued_;
     std::unordered_map<uint32_t, uint32_t> adc_stream_samples_;
     uint32_t next_bus_xfer_id_ = 1;
     uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY, 128=GPIO WAVE, 256=PULSE IN

@@ -88,7 +88,10 @@ struct PinEvent {
 - 上升沿（`value=1`）报告上一个低电平宽度；
 - 下降沿（`value=0`）报告上一个高电平宽度；
 - 第一次边沿没有前一条边，`changed.bit3=0`；
-- 所有 GPIO 每步采样，因此窄脉冲也能被记录；
+- 模型默认每 `pin_poll_interval` 条指令（默认 16）全量采样一次；外部通过
+  `set_pin_value()` 置 hold 的引脚每步采样，GPIO 边沿中断模型（`gpio_irq`）也每步采样，
+  因此窄脉冲仍可被记录；
+- 需要严格逐周期脉宽时，优先用 `PulseWidth` 事件注入，或用 `set_pin_value()` 驱动引脚；
 - 需要写寄存器/触发中断时再配置 `captures[]`；只读取脉宽直接用 `PinEvent`。
 
 ### 外部输入波宽

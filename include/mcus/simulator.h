@@ -38,6 +38,13 @@ public:
     void run();
     void stop();
 
+#ifdef MCUS_TEST
+    // 仅供单元测试：在无 CPU 线程的情况下直接推进外设时钟。
+    void advance_clock_for_test(VirtTime delta) { advance_clock(delta); }
+    Cpu& cpu_for_test() { return cpu_; }
+    SharedMemory& shm_for_test() { return shm_; }
+#endif
+
 private:
     void cpu_loop();
     void clock_loop();

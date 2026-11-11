@@ -673,7 +673,9 @@ int main() {
 - 共享内存的 `ControlBlock`、`PinState`、`Inject*`、`Breakpoint*` 和事件流 `Header` 布局未变；`PinState` 仍为 `function/value/direction` 三个 `atomic`，外部 hold 位图位于共享内存尾部，旧偏移不变；`PinEvent` 增加了 `pulse_width` 字段，`DebugEvent` 大小变化，直接 mmap 事件流的外部程序需要按当前头文件重新编译；
 - 使用 C++ `SharedMemory`/`EventStream` 类的外部程序需要按当前头文件重新编译（类新增了私有缓存成员，类大小变了）；
 - `EventStream::push_in()` 会置 `host_attached`；模拟器只在 `host_attached=1` 时轮询 in 环。直接 mmap 写 in 环的外部程序必须自己把 `Header.host_attached` 置 1；
-- 所有 GPIO 每步采样，外部引脚注入和脉宽测量最多延迟 1 条指令。
+- 外部通过 `set_pin_value()` 置 hold 的引脚每步采样；其余引脚按模型
+  `pin_poll_interval`（默认 16）全量采样，引脚注入和脉宽测量最多延迟该间隔。
+  需要逐周期精度时请用 `set_pin_value()` 或 `PulseWidth` 事件。
 
 ## 16. 注意事项
 
@@ -683,7 +685,7 @@ int main() {
 4. **事件流有 out/in 两个环：外部程序 `pop()` 消费 out、`push_in()` 生产 in；两个环的 `head`/`tail` 都是 `uint64_t`，满时分别置 `backpressure_out`/`backpressure_in`；**
 5. **中断位图 `bm[i] |= (1 << b)`，外部程序写，模拟器 `check_interrupt` 读，`enter_interrupt` 清；**
 6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序可写 `value` 注入电平；主动驱动时应调用 `set_pin_value()`（在尾部 hold 位图标记），否则 CPU 端口写可能覆盖；`direction=0` 时输入引脚变化还会触发 GPIO 边沿中断；**
-7. **所有 GPIO 每步采样；`PinEvent.pulse_width` 记录上一个电平宽度，外部输入变化最多延迟 1 条指令；**
+7. **`set_pin_value()` 置 hold 的引脚每步采样，其余引脚按模型 `pin_poll_interval`（默认 16）采样；`PinEvent.pulse_width` 记录上一个电平宽度，逐周期精度请用 `set_pin_value()` 或 `PulseWidth` 事件；**
 8. **断点区 `bh->count`/`sorted`/`min_addr`/`max_addr` 写完后，`hit=0`，`Resume`，模拟器 `check_breakpoint` 二分查；**
 9. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点；**
 10. **SPI 是同步总线：外部程序 attach 事件流后，模拟器会冻结 CPU 等待 `SpiXfer(ToMcu)` 响应；建议 `start_paused=true`，attach 后先 `Resume`，避免第一次传输用默认 MISO 抢跑；**

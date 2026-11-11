@@ -91,10 +91,32 @@ int main() {
         read_p1.data = {0x75, 0x90, 0xFF, 0xE5, 0x90, 0x80, 0xFE};
         cpu.load_firmware(read_p1);
         cpu.reset();
-        shm.set_pin_value(8, 0); // P1.0 外部驱动低，CPU 写 P1 不应覆盖
+        shm.set_pin_value(8, 0);  // P1.0 外部驱动低
+        shm.set_pin_value(11, 1); // P1.3 外部驱动高
         cpu.step(); // MOV P1,#0xFF
         cpu.step(); // MOV A,P1
+        // P1.0 外部低，其余锁存高。
         assert(shm.read_reg("sfr", 0xE0, 8) == 0xFE);
+
+        // P1.3 锁存为低、外部驱动为高：读端口必须把外部高合并回来。
+        FirmwareImage read_p1_3;
+        read_p1_3.load_addr = 0;
+        read_p1_3.data = {0x75, 0x90, 0xF7, 0xE5, 0x90, 0x80, 0xFE};
+        cpu.load_firmware(read_p1_3);
+        cpu.reset();
+        shm.set_pin_value(11, 1);
+        cpu.step(); // MOV P1,#0xF7
+        cpu.step(); // MOV A,P1
+        assert(shm.read_reg("sfr", 0xE0, 8) == 0xFF);
+
+        // 释放外部保持后，端口锁存值重新生效。
+        shm.release_pin(8);
+        shm.release_pin(11);
+        cpu.reset();
+        cpu.load_firmware(read_p1_3);
+        cpu.step(); // MOV P1,#0xF7
+        cpu.step(); // MOV A,P1
+        assert(shm.read_reg("sfr", 0xE0, 8) == 0xF7);
 
         std::puts("stc90c51 ok");
     }

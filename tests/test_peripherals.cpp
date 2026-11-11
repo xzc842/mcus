@@ -228,6 +228,25 @@ int main() {
         assert(cpu.regs().pc == 99);            // GPIO 向量
         assert((cpu.read8("sfr", 0x90) & 0x01) == 0); // 读 P1 采样到低电平
 
+        // ---- USB SETUP ----
+        {
+            DebugEvent setup{};
+            setup.type = DebugEventType::Usb;
+            setup.u.usb.token = static_cast<uint8_t>(UsbToken::Setup);
+            setup.u.usb.ep = 0;
+            setup.u.usb.len = 8;
+            setup.u.usb.xfer_id = 76;
+            const uint8_t setup_data[8] = {0x80, 0x06, 0x00, 0x01,
+                                            0x00, 0x00, 0x40, 0x00};
+            std::memcpy(setup.u.usb.data, setup_data, 8);
+            assert(stream.push_in(setup));
+            cpu.step();
+            assert(cpu.read8("sfr", 0xDB) == 8);       // RX_LEN
+            assert(cpu.read8("sfr", 0xD9) & 0x30);     // SETUP token bits
+            assert(cpu.read8("xram", 0) == 0x80);
+            assert(cpu.read8("xram", 7) == 0x00);
+        }
+
         // ---- USB IN / OUT ----
         for (uint32_t i = 0; i < 4; ++i)
             cpu.write8("xram", i, static_cast<uint8_t>(0x10 + i));

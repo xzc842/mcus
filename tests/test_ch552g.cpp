@@ -31,8 +31,9 @@ int main() {
     const RegisterDesc* safe_mod = m.find_register_by_name("SAFE_MOD");
     assert(safe_mod && safe_mod->read_alias == "CHIP_ID");
 
-    assert(!m.timers.empty());
+    assert(m.timers.size() == 4); // Timer0/1/2 + WDOG
     assert(m.find_interrupt(1));
+    assert(m.find_interrupt(13)); // WDOG 中断向量
 
     assert(m.uarts.size() == 2);
     assert(m.spis.size() == 1);
