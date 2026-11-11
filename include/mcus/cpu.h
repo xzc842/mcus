@@ -148,6 +148,13 @@ private:
                     uint32_t direction);
     void sync_pins_for_register(const SpaceId& space, Addr addr,
                                 uint32_t value);
+    void sync_pin_mux(const SpaceId& space, Addr addr, uint32_t value);
+    void on_pin_change(size_t index, uint32_t value);
+    void update_wave(size_t index);
+    void start_wave(size_t index, uint32_t value);
+    void stop_wave(size_t index);
+    uint32_t read_reg_value(const SpaceId& space, Addr addr) const;
+    void write_reg_value(const SpaceId& space, Addr addr, uint32_t value);
 
     // ---- 外设 / 总线事件 ----
     void poll_bus_in();
@@ -180,6 +187,7 @@ private:
     std::vector<uint32_t> last_pin_direction_;
     uint32_t pin_poll_skip_ = 0;
     uint32_t pin_poll_interval_ = 1;
+    std::vector<uint32_t> fast_pin_indices_;
     uint32_t pin_slow_counter_ = 0;
     uint32_t last_reported_pc_ = 0xFFFFFFFF;
 
@@ -210,14 +218,45 @@ private:
         bool busy = false;
         VirtTime ready_at = 0;
     };
+    struct I2cRuntime {
+        bool busy = false;
+        uint32_t xfer_id = 0;
+    };
+    struct CanRuntime {
+        bool busy = false;
+    };
+    struct EncoderRuntime {
+        bool initialized = false;
+        uint32_t last_ab = 0;
+        int64_t count = 0;
+    };
+    struct CaptureRuntime {
+        bool armed = false;
+        VirtTime start = 0;
+    };
+    struct WaveRuntime {
+        bool active = false;
+        uint32_t level = 0;
+        VirtTime next_toggle = 0;
+        uint32_t high = 1;
+        uint32_t low = 1;
+        uint64_t remaining = 0;
+        bool finish_after_low = false;
+    };
     std::vector<UartRuntime> uart_rt_;
     std::vector<SpiRuntime> spi_rt_;
     std::vector<uint8_t> usb_tx_pending_;
     std::vector<PwmRuntime> pwm_rt_;
     std::vector<AdcRuntime> adc_rt_;
     std::vector<TkeyRuntime> tkey_rt_;
+    std::vector<I2cRuntime> i2c_rt_;
+    std::vector<CanRuntime> can_rt_;
+    std::vector<EncoderRuntime> encoder_rt_;
+    std::vector<CaptureRuntime> capture_rt_;
+    std::vector<WaveRuntime> wave_rt_;
+    std::unordered_map<uint32_t, uint32_t> adc_stream_samples_;
     uint32_t next_bus_xfer_id_ = 1;
-    uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY
+    uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY, 128=GPIO WAVE
 
     uint32_t last_bp_pc_ = 0xFFFFFFFF;
 };

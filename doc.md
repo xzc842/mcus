@@ -31,6 +31,7 @@ mcus/
 │   ├── dummy.json
 │   ├── ch552g.json
 │   ├── stc90c51.json
+│   ├── interface_test.json
 │   ├── stm32f103c8t6.json
 │   ├── generic.json
 │   └── schema.md
@@ -342,6 +343,10 @@ CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,00
 
 加载 STC90C51RC 模型，执行 `MOV P1,#0xAA`，验证 SFR 与引脚同步。
 
+### `tests/test_interfaces.cpp`
+
+用 `models/interface_test.json` 验证引脚复用、I2C、CAN、DAC、ADC 注入、正交编码器、GPIO 脉宽输入和波形输出。
+
 ### `tests/test_timer.cpp`
 
 验证定时器描述完整性和手动溢出置位逻辑。
@@ -369,7 +374,7 @@ CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,00
 - **控制区命令**：Pause、Resume、Step、Dump、Reset。
 - **中断注入**：外部程序写挂起寄存器位、中断位图，或往注入区写 `InjectSlot`。
 - **引脚**：外部程序读写 `PinState` 的 function/value/direction；输入引脚变化会被模拟器在指令边界采样，产生 Pin 事件和 GPIO 边沿中断。
-- **总线**：UART/SPI/USB 全部通过 `BusEvent`/`UsbEvent` 收发，详细约定见 `docs/external.md`。
+- **总线**：UART/SPI/I2C/CAN/USB/DAC/ADC/编码器/捕获全部通过 `DebugEvent` 收发的数据流，详细字段见 `docs/interfaces.md`。
 
 ## 10. 限制
 

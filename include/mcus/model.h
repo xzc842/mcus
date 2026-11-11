@@ -97,6 +97,13 @@ struct PinDesc {
     SpaceId input_space;
     Addr input_reg = 0;
     uint8_t input_bit = 0;
+
+    // 引脚复用：寄存器字段值对应 functions 的下标。
+    bool has_mux = false;
+    SpaceId mux_space;
+    Addr mux_reg = 0;
+    uint8_t mux_shift = 0;
+    uint8_t mux_width = 1;
 };
 
 struct InterruptDesc {
@@ -224,6 +231,101 @@ struct TkeyDesc {
     std::vector<uint32_t> channel_pins;   // 通道号 -> Model::pins 索引
 };
 
+// I2C 主机：start/stop 写 ctrl；写 data 发 I2cData(ToHost)；
+// 外部 push_in(I2cData/ToMcu) 写回数据并置完成。
+struct I2cDesc {
+    std::string name;
+    uint32_t irq = 0;
+    SpaceId space;
+    Addr ctrl = 0;
+    Addr data = 0;
+    Addr stat = 0;
+    uint8_t start_bit = 0;
+    uint8_t stop_bit = 1;
+    uint8_t ack_bit = 2;
+    uint8_t done_bit = 3;
+    uint8_t if_bit = 4;
+    uint8_t busy_bit = 7;
+    uint32_t xfer_cycles = 8;
+    bool signal_irq_on_done = false;
+    int scl_pin = -1;
+    int sda_pin = -1;
+};
+
+// CAN 帧：写 data 发 CanFrame(ToHost)；外部 push_in(CanFrame/ToMcu) 收帧。
+struct CanDesc {
+    std::string name;
+    uint32_t irq = 0;
+    SpaceId space;
+    Addr ctrl = 0;
+    Addr stat = 0;
+    Addr id = 0;
+    Addr data = 0;
+    Addr data_hi = 0;       // 可选：payload 高 4 字节寄存器
+    Addr dlc = 0;
+    uint8_t start_bit = 0;
+    uint8_t done_bit = 1;
+    uint8_t if_bit = 2;
+    uint8_t busy_bit = 7;
+    uint32_t frame_cycles = 16;
+    bool extended = false;
+    bool signal_irq_on_done = false;
+    int tx_pin = -1;
+    int rx_pin = -1;
+};
+
+// DAC：写 data 发 DacWrite(ToHost)，value 的低 bits 位为转换值。
+struct DacDesc {
+    std::string name;
+    SpaceId space;
+    Addr ctrl = 0;
+    Addr data = 0;
+    uint8_t channel = 0;
+    uint8_t bits = 12;
+    uint32_t vref_mv = 3300;
+    int output_pin = -1;
+};
+
+// 正交编码器：A/B 两相引脚变化时更新 count 寄存器并发 EncoderDelta。
+struct EncoderDesc {
+    std::string name;
+    uint32_t irq = 0;
+    SpaceId space;
+    Addr count = 0;
+    Addr ctrl = 0;
+    uint8_t reset_bit = 0;
+    uint8_t bits = 16;
+    int a_pin = -1;
+    int b_pin = -1;
+    bool reverse = false;
+    uint32_t step = 1;
+};
+
+// GPIO 脉宽输入：测量 pin 的高/低电平宽度，写入 width 寄存器并发 PwmCapture。
+struct CaptureDesc {
+    std::string name;
+    uint32_t irq = 0;
+    SpaceId space;
+    Addr width = 0;
+    int pin = -1;
+    bool measure_high = true;
+    bool signal_irq_on_done = true;
+};
+
+// GPIO 波形输出：写 ctrl 的 start 位启动，period/high 寄存器决定周期和高电平。
+struct GpioWaveDesc {
+    std::string name;
+    uint32_t irq = 0;
+    SpaceId space;
+    Addr ctrl = 0;
+    Addr period = 0;
+    Addr high = 0;
+    uint8_t start_bit = 0;
+    uint8_t stop_bit = 1;
+    int pin = -1;
+    uint32_t repeat = 0;   // 0=连续
+};
+
 struct GpioIrqDesc {
     bool present = false;
     uint32_t irq = 0;
@@ -322,6 +424,12 @@ struct Model {
     std::vector<PwmDesc> pwms;
     std::vector<AdcDesc> adcs;
     std::vector<TkeyDesc> tkeys;
+    std::vector<I2cDesc> i2cs;
+    std::vector<CanDesc> cans;
+    std::vector<DacDesc> dacs;
+    std::vector<EncoderDesc> encoders;
+    std::vector<CaptureDesc> captures;
+    std::vector<GpioWaveDesc> gpio_waves;
     GpioIrqDesc gpio_irq;
     UsbDesc usb;
     std::vector<std::string> isa_extensions;

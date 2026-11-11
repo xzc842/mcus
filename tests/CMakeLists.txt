@@ -95,3 +95,9 @@ target_link_libraries(test_stc90c51 PRIVATE mcus_core mcus_isa_8051)
 target_compile_definitions(test_stc90c51 PRIVATE
     MCUS_TEST_STC90C51_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stc90c51.json")
 add_test(NAME stc90c51 COMMAND test_stc90c51)
+
+add_executable(test_interfaces test_interfaces.cpp)
+target_link_libraries(test_interfaces PRIVATE mcus_core)
+target_compile_definitions(test_interfaces PRIVATE
+    MCUS_TEST_INTERFACE_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/interface_test.json")
+add_test(NAME interfaces COMMAND test_interfaces)

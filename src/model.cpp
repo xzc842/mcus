@@ -161,6 +161,13 @@ Model Model::load_from_file(const std::string& path) {
             pd.input_reg = u32(p, "input_reg", pd.source_reg);
             pd.input_bit = static_cast<uint8_t>(u32(p, "input_bit", pd.source_bit));
         }
+        if (p.contains("mux_reg")) {
+            pd.has_mux = true;
+            pd.mux_space = str(p, "mux_space", pd.source_space);
+            pd.mux_reg = u32(p, "mux_reg", 0);
+            pd.mux_shift = static_cast<uint8_t>(u32(p, "mux_shift", 0));
+            pd.mux_width = static_cast<uint8_t>(u32(p, "mux_width", 1));
+        }
         m.pins.push_back(std::move(pd));
     }
     for (const auto& irq : j.value("interrupts", json::array())) {
@@ -220,6 +227,10 @@ Model Model::load_from_file(const std::string& path) {
         if (it == pin_index.end())
             throw std::runtime_error("unknown pin in peripheral: " + name);
         return it->second;
+    };
+    auto resolve_pin_opt = [&](const json& o, const char* key) -> int {
+        if (!o.contains(key)) return -1;
+        return static_cast<int>(resolve_pin(o.at(key)));
     };
 
     for (const auto& u : j.value("uarts", json::array())) {
@@ -323,6 +334,101 @@ Model Model::load_from_file(const std::string& path) {
         for (const auto& c : t.value("channels", json::array()))
             d.channel_pins.push_back(resolve_pin(c));
         m.tkeys.push_back(std::move(d));
+    }
+
+    for (const auto& i2 : j.value("i2cs", json::array())) {
+        I2cDesc d;
+        d.name = str(i2, "name");
+        d.irq = u32(i2, "irq");
+        d.space = str(i2, "space");
+        d.ctrl = u32(i2, "ctrl");
+        d.data = u32(i2, "data");
+        d.stat = u32(i2, "stat");
+        d.start_bit = static_cast<uint8_t>(u32(i2, "start_bit", 0));
+        d.stop_bit = static_cast<uint8_t>(u32(i2, "stop_bit", 1));
+        d.ack_bit = static_cast<uint8_t>(u32(i2, "ack_bit", 2));
+        d.done_bit = static_cast<uint8_t>(u32(i2, "done_bit", 3));
+        d.if_bit = static_cast<uint8_t>(u32(i2, "if_bit", 4));
+        d.busy_bit = static_cast<uint8_t>(u32(i2, "busy_bit", 7));
+        d.xfer_cycles = u32(i2, "xfer_cycles", 8);
+        d.signal_irq_on_done = b(i2, "signal_irq_on_done", false);
+        d.scl_pin = resolve_pin_opt(i2, "scl_pin");
+        d.sda_pin = resolve_pin_opt(i2, "sda_pin");
+        m.i2cs.push_back(std::move(d));
+    }
+    for (const auto& cn : j.value("cans", json::array())) {
+        CanDesc d;
+        d.name = str(cn, "name");
+        d.irq = u32(cn, "irq");
+        d.space = str(cn, "space");
+        d.ctrl = u32(cn, "ctrl");
+        d.stat = u32(cn, "stat");
+        d.id = u32(cn, "id");
+        d.data = u32(cn, "data");
+        d.data_hi = u32(cn, "data_hi", 0);
+        d.dlc = u32(cn, "dlc");
+        d.start_bit = static_cast<uint8_t>(u32(cn, "start_bit", 0));
+        d.done_bit = static_cast<uint8_t>(u32(cn, "done_bit", 1));
+        d.if_bit = static_cast<uint8_t>(u32(cn, "if_bit", 2));
+        d.busy_bit = static_cast<uint8_t>(u32(cn, "busy_bit", 7));
+        d.frame_cycles = u32(cn, "frame_cycles", 16);
+        d.extended = b(cn, "extended", false);
+        d.signal_irq_on_done = b(cn, "signal_irq_on_done", false);
+        d.tx_pin = resolve_pin_opt(cn, "tx_pin");
+        d.rx_pin = resolve_pin_opt(cn, "rx_pin");
+        m.cans.push_back(std::move(d));
+    }
+    for (const auto& da : j.value("dacs", json::array())) {
+        DacDesc d;
+        d.name = str(da, "name");
+        d.space = str(da, "space");
+        d.ctrl = u32(da, "ctrl", 0);
+        d.data = u32(da, "data");
+        d.channel = static_cast<uint8_t>(u32(da, "channel", 0));
+        d.bits = static_cast<uint8_t>(std::max<uint32_t>(1, std::min<uint32_t>(32, u32(da, "bits", 12))));
+        d.vref_mv = u32(da, "vref_mv", 3300);
+        d.output_pin = resolve_pin_opt(da, "output_pin");
+        m.dacs.push_back(std::move(d));
+    }
+    for (const auto& en : j.value("encoders", json::array())) {
+        EncoderDesc d;
+        d.name = str(en, "name");
+        d.irq = u32(en, "irq");
+        d.space = str(en, "space");
+        d.count = u32(en, "count");
+        d.ctrl = u32(en, "ctrl", 0);
+        d.reset_bit = static_cast<uint8_t>(u32(en, "reset_bit", 0));
+        d.bits = static_cast<uint8_t>(std::max<uint32_t>(1, std::min<uint32_t>(32, u32(en, "bits", 16))));
+        d.a_pin = resolve_pin_opt(en, "a_pin");
+        d.b_pin = resolve_pin_opt(en, "b_pin");
+        d.reverse = b(en, "reverse", false);
+        d.step = std::max<uint32_t>(1, u32(en, "step", 1));
+        m.encoders.push_back(std::move(d));
+    }
+    for (const auto& ca : j.value("captures", json::array())) {
+        CaptureDesc d;
+        d.name = str(ca, "name");
+        d.irq = u32(ca, "irq");
+        d.space = str(ca, "space");
+        d.width = u32(ca, "width");
+        d.pin = resolve_pin_opt(ca, "pin");
+        d.measure_high = b(ca, "measure_high", true);
+        d.signal_irq_on_done = b(ca, "signal_irq_on_done", true);
+        m.captures.push_back(std::move(d));
+    }
+    for (const auto& gw : j.value("gpio_waves", json::array())) {
+        GpioWaveDesc d;
+        d.name = str(gw, "name");
+        d.irq = u32(gw, "irq");
+        d.space = str(gw, "space");
+        d.ctrl = u32(gw, "ctrl");
+        d.period = u32(gw, "period");
+        d.high = u32(gw, "high");
+        d.start_bit = static_cast<uint8_t>(u32(gw, "start_bit", 0));
+        d.stop_bit = static_cast<uint8_t>(u32(gw, "stop_bit", 1));
+        d.pin = resolve_pin_opt(gw, "pin");
+        d.repeat = u32(gw, "repeat", 0);
+        m.gpio_waves.push_back(std::move(d));
     }
 
     if (j.contains("gpio_irq")) {
@@ -563,6 +669,13 @@ void Model::validate() const {
             throw std::runtime_error("pin source_reg missing: " + p.name);
         if (p.has_input && !has_reg(p.input_space, p.input_reg))
             throw std::runtime_error("pin input_reg missing: " + p.name);
+        if (p.has_mux) {
+            if (!has_reg(p.mux_space, p.mux_reg))
+                throw std::runtime_error("pin mux_reg missing: " + p.name);
+            if (p.mux_width == 0 || p.mux_width > 32 ||
+                static_cast<uint32_t>(p.mux_shift) + p.mux_width > 32)
+                throw std::runtime_error("invalid pin mux field: " + p.name);
+        }
     }
 
     for (const auto& sp : arch_desc.fast_spaces) {
@@ -623,6 +736,56 @@ void Model::validate() const {
         for (uint32_t pin : t.channel_pins)
             if (pin >= pins.size())
                 throw std::runtime_error("tkey pin index invalid: " + t.name);
+    }
+    for (const auto& d : i2cs) {
+        check_reg(d.space, d.ctrl, d.name + ".ctrl");
+        check_reg(d.space, d.data, d.name + ".data");
+        check_reg(d.space, d.stat, d.name + ".stat");
+        check_irq(d.irq, d.name);
+        if (d.scl_pin >= static_cast<int>(pins.size()) ||
+            d.sda_pin >= static_cast<int>(pins.size()))
+            throw std::runtime_error("i2c pin index invalid: " + d.name);
+    }
+    for (const auto& d : cans) {
+        check_reg(d.space, d.ctrl, d.name + ".ctrl");
+        check_reg(d.space, d.stat, d.name + ".stat");
+        check_reg(d.space, d.id, d.name + ".id");
+        check_reg(d.space, d.data, d.name + ".data");
+        if (d.data_hi != 0) check_reg(d.space, d.data_hi, d.name + ".data_hi");
+        check_reg(d.space, d.dlc, d.name + ".dlc");
+        check_irq(d.irq, d.name);
+        if (d.tx_pin >= static_cast<int>(pins.size()) ||
+            d.rx_pin >= static_cast<int>(pins.size()))
+            throw std::runtime_error("can pin index invalid: " + d.name);
+    }
+    for (const auto& d : dacs) {
+        if (d.ctrl != 0) check_reg(d.space, d.ctrl, d.name + ".ctrl");
+        check_reg(d.space, d.data, d.name + ".data");
+        if (d.output_pin >= static_cast<int>(pins.size()))
+            throw std::runtime_error("dac pin index invalid: " + d.name);
+    }
+    for (const auto& d : encoders) {
+        check_reg(d.space, d.count, d.name + ".count");
+        if (d.ctrl != 0) check_reg(d.space, d.ctrl, d.name + ".ctrl");
+        check_irq(d.irq, d.name);
+        if (d.a_pin < 0 || d.b_pin < 0 ||
+            d.a_pin >= static_cast<int>(pins.size()) ||
+            d.b_pin >= static_cast<int>(pins.size()))
+            throw std::runtime_error("encoder pins invalid: " + d.name);
+    }
+    for (const auto& d : captures) {
+        check_reg(d.space, d.width, d.name + ".width");
+        check_irq(d.irq, d.name);
+        if (d.pin < 0 || d.pin >= static_cast<int>(pins.size()))
+            throw std::runtime_error("capture pin invalid: " + d.name);
+    }
+    for (const auto& d : gpio_waves) {
+        check_reg(d.space, d.ctrl, d.name + ".ctrl");
+        check_reg(d.space, d.period, d.name + ".period");
+        check_reg(d.space, d.high, d.name + ".high");
+        check_irq(d.irq, d.name);
+        if (d.pin < 0 || d.pin >= static_cast<int>(pins.size()))
+            throw std::runtime_error("gpio wave pin invalid: " + d.name);
     }
     if (gpio_irq.present) {
         check_reg(gpio_irq.enable_space, gpio_irq.enable_reg, "gpio_irq.enable");

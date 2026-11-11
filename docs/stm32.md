@@ -51,7 +51,7 @@ cmake --build build
   `ICER/ICPR` 的写 1 清零由 ISA 的 `on_mmio_write` 处理。
 - **SysTick**：`CSR/RVR/CVR/CALIB`；`RVR` 重载、递减到 0 产生 SysTick 异常（向量 `0x3C`）。
 - **SCB**：`CPUID/ICSR/VTOR/AIRCR/SCR/CCR/SHPRx/SHCSR/CFSR/HFSR/...` 作为寄存器建模。
-- **RCC/FLASH/AFIO/EXTI/I2C/USB/CAN**：寄存器骨架，暂无协议引擎。
+- **I2C1/2、CAN1**：基于事件流的主机/帧收发（简化模型，见 [docs/interfaces.md](interfaces.md)）；RCC/FLASH/AFIO/EXTI/DMA 仍为寄存器骨架。
 
 ## 5. NVIC 与 PRIMASK
 
@@ -85,8 +85,10 @@ SVC/除零/总线错误等异常、完整 VTOR 重定位、所有 Thumb-2 指令
 
 ## 7. 已知限制
 
-- `I2C/USB/CAN/DMA` 只有寄存器，没有协议/传输引擎；
+- `USB/DMA` 只有寄存器/端点模型，没有完整协议或 DMA 引擎；
+- I2C/CAN 使用简化事件流，不含地址阶段、仲裁、邮箱/过滤器；
 - `EXTI` 和 GPIO 边沿中断未接入 NVIC（外部引脚变化仍产生 PinEvent，但不会自动触发 EXTI）；
+- 正交编码器只使用 TIMx_CNT 计数，不模拟 TIM 编码器模式寄存器；
 - `NVIC_IPR` 写入不改变静态优先级（模型里的 `priority` 字段决定）；
 - `SCB_VTOR` 不参与向量计算（`interrupt_vector` 直接读模型 `vector_addr`）；
 - 没有 RCC 时钟门控，外设访问不会因为未开时钟而失效；

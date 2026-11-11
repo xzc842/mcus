@@ -105,6 +105,16 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
     pins_ = shm_.pins();
     // 有 GPIO 边沿中断的模型每步采样；纯轮询模型可低频采样以降低开销。
     pin_poll_interval_ = model_.gpio_irq.present ? 1u : 16u;
+    for (const auto& e : model_.encoders) {
+        if (e.a_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.a_pin));
+        if (e.b_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.b_pin));
+    }
+    for (const auto& c : model_.captures)
+        if (c.pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(c.pin));
+    std::sort(fast_pin_indices_.begin(), fast_pin_indices_.end());
+    fast_pin_indices_.erase(
+        std::unique(fast_pin_indices_.begin(), fast_pin_indices_.end()),
+        fast_pin_indices_.end());
     irq_bitmap_ = shm_.interrupt_bitmap();
     irq_bitmap_size_ = shm_.interrupt_bitmap_size();
     inject_header_ = shm_.inject_header();
@@ -235,6 +245,12 @@ void Cpu::reset() {
     pwm_rt_.assign(model_.pwms.size(), PwmRuntime{});
     adc_rt_.assign(model_.adcs.size(), AdcRuntime{});
     tkey_rt_.assign(model_.tkeys.size(), TkeyRuntime{});
+    i2c_rt_.assign(model_.i2cs.size(), I2cRuntime{});
+    can_rt_.assign(model_.cans.size(), CanRuntime{});
+    encoder_rt_.assign(model_.encoders.size(), EncoderRuntime{});
+    capture_rt_.assign(model_.captures.size(), CaptureRuntime{});
+    wave_rt_.assign(model_.gpio_waves.size(), WaveRuntime{});
+    adc_stream_samples_.clear();
     usb_tx_pending_.assign(model_.usb.endpoints.size(), 0);
     shm_.reset_all();
 
@@ -269,10 +285,21 @@ void Cpu::reset() {
         PinState* writable = pins_;
         writable[i].value.store(value);
         writable[i].direction.store(direction);
+        writable[i].external.store(0);
         writable[i].function.store(pd.reset_function);
         last_pin_value_[i] = value;
         last_pin_function_[i] = pd.reset_function;
         last_pin_direction_[i] = direction;
+    }
+    for (size_t i = 0; i < model_.encoders.size(); ++i) {
+        const auto& e = model_.encoders[i];
+        EncoderRuntime& rt = encoder_rt_[i];
+        rt.initialized = true;
+        rt.count = 0;
+        if (e.a_pin >= 0 && e.b_pin >= 0) {
+            rt.last_ab = (pins_[e.a_pin].value.load() << 1) |
+                         pins_[e.b_pin].value.load();
+        }
     }
 
     ctl_->pc.store(regs_.pc);
@@ -474,6 +501,10 @@ void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
                      uint32_t direction) {
     PinState* pins = pins_;
     const uint32_t old_value = pins[index].value.load();
+    if (pins[index].external.load()) {
+        // 外部调试程序写入的电平优先于 CPU 对端口锁存器的读写。
+        value = old_value;
+    }
     const uint32_t old_function = pins[index].function.load();
     const uint32_t old_direction = pins[index].direction.load();
 
@@ -483,9 +514,11 @@ void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
     if (old_direction != direction) changed |= 4;
     if (changed == 0) return;
 
+    const bool value_changed = (old_value != value);
     pins[index].value.store(value);
     pins[index].function.store(function);
     pins[index].direction.store(direction);
+    if (value_changed) on_pin_change(index, value);
 
     DebugEvent ev{};
     ev.time = now_;
@@ -552,6 +585,7 @@ void Cpu::handle_mmio_write(const SpaceId& space, Addr addr, uint32_t value, uin
     }
 
     sync_pins_for_register(space, addr, nv);
+    sync_pin_mux(space, addr, nv);
 
     if (reg->semantics == RegSemantics::WriteTrigger ||
         reg->semantics == RegSemantics::Fifo) {
@@ -592,6 +626,151 @@ void Cpu::sync_pins_for_register(const SpaceId& space, Addr addr,
             }
             update_pin(i, pv, pins[i].function.load(), dir);
         }
+    }
+}
+
+
+uint32_t Cpu::read_reg_value(const SpaceId& space, Addr addr) const {
+    const RegisterDesc* rd = model_.find_register(space, addr);
+    return shm_.read_reg(space, addr, rd ? rd->width : 8);
+}
+
+void Cpu::write_reg_value(const SpaceId& space, Addr addr, uint32_t value) {
+    const RegisterDesc* rd = model_.find_register(space, addr);
+    shm_.write_reg(space, addr, value, rd ? rd->width : 8);
+}
+
+void Cpu::sync_pin_mux(const SpaceId& space, Addr addr, uint32_t value) {
+    for (size_t i = 0; i < model_.pins.size(); ++i) {
+        const PinDesc& pd = model_.pins[i];
+        if (!pd.has_mux || pd.mux_space != space || pd.mux_reg != addr) continue;
+        if (pd.mux_width == 0 || pd.mux_width > 32) continue;
+        const uint32_t mask = pd.mux_width == 32
+                                  ? 0xFFFFFFFFu
+                                  : ((1u << pd.mux_width) - 1u);
+        const uint32_t fn = (value >> pd.mux_shift) & mask;
+        if (fn >= pd.functions.size()) continue;
+        if (pins_[i].function.load() == fn) continue;
+        update_pin(i, pins_[i].value.load(), fn, pins_[i].direction.load());
+    }
+}
+
+void Cpu::on_pin_change(size_t index, uint32_t value) {
+    for (size_t i = 0; i < model_.encoders.size(); ++i) {
+        const EncoderDesc& e = model_.encoders[i];
+        if (static_cast<int>(index) != e.a_pin &&
+            static_cast<int>(index) != e.b_pin) continue;
+        EncoderRuntime& rt = encoder_rt_[i];
+        const uint32_t a = pins_[e.a_pin].value.load();
+        const uint32_t b = pins_[e.b_pin].value.load();
+        const uint32_t ab = (a << 1) | b;
+        if (!rt.initialized) {
+            rt.initialized = true;
+            rt.last_ab = ab;
+            continue;
+        }
+        static const int8_t kQuad[4][4] = {
+            {0, -1, 1, 0}, {1, 0, 0, -1}, {-1, 0, 0, 1}, {0, 1, -1, 0}};
+        int delta = kQuad[rt.last_ab & 3][ab & 3];
+        rt.last_ab = ab;
+        if (delta == 0) continue;
+        if (e.reverse) delta = -delta;
+        rt.count += static_cast<int64_t>(delta) * e.step;
+        const RegisterDesc* crd = model_.find_register(e.space, e.count);
+        const uint8_t w = crd ? crd->width : 8;
+        const uint64_t mask = w >= 64 ? ~0ull : ((1ull << w) - 1);
+        shm_.write_reg(e.space, e.count,
+                       static_cast<uint32_t>(rt.count & mask), w);
+        uint8_t data[4];
+        int32_t d32 = delta * static_cast<int32_t>(e.step);
+        std::memcpy(data, &d32, 4);
+        emit_bus_event(static_cast<uint32_t>(i), BusEventKind::EncoderDelta,
+                       BusDirection::ToHost, next_bus_xfer_id_++, data, 4);
+        if (e.irq != 0) set_irq_pending(e.irq);
+    }
+
+    for (size_t i = 0; i < model_.captures.size(); ++i) {
+        const CaptureDesc& c = model_.captures[i];
+        if (static_cast<int>(index) != c.pin) continue;
+        CaptureRuntime& rt = capture_rt_[i];
+        const bool active_edge = c.measure_high ? (value != 0) : (value == 0);
+        if (active_edge && !rt.armed) {
+            rt.armed = true;
+            rt.start = now_;
+        } else if (!active_edge && rt.armed) {
+            const uint32_t width = static_cast<uint32_t>(now_ - rt.start);
+            write_reg_value(c.space, c.width, width);
+            uint8_t data[4];
+            std::memcpy(data, &width, 4);
+            emit_bus_event(static_cast<uint32_t>(i), BusEventKind::PwmCapture,
+                           BusDirection::ToHost, next_bus_xfer_id_++, data, 4);
+            if (c.signal_irq_on_done && c.irq != 0) set_irq_pending(c.irq);
+            rt.armed = false;
+        }
+    }
+    (void)value;
+}
+
+void Cpu::start_wave(size_t index, uint32_t) {
+    if (index >= model_.gpio_waves.size()) return;
+    const GpioWaveDesc& w = model_.gpio_waves[index];
+    if (w.pin < 0 || w.pin >= static_cast<int>(model_.pins.size())) return;
+    uint32_t period = read_reg_value(w.space, w.period);
+    uint32_t high = read_reg_value(w.space, w.high);
+    if (period == 0) period = 1;
+    if (high == 0) high = 1;
+    if (high > period) high = period;
+    WaveRuntime& rt = wave_rt_[index];
+    rt.active = true;
+    rt.level = 1;
+    rt.high = high;
+    rt.low = period > high ? period - high : 1;
+    rt.remaining = w.repeat;
+    rt.finish_after_low = false;
+    rt.next_toggle = now_ + high;
+    periph_active_ |= 128u;
+    update_pin(static_cast<size_t>(w.pin), 1,
+               pins_[w.pin].function.load(), pins_[w.pin].direction.load());
+}
+
+void Cpu::stop_wave(size_t index) {
+    if (index >= wave_rt_.size()) return;
+    const GpioWaveDesc& w = model_.gpio_waves[index];
+    WaveRuntime& rt = wave_rt_[index];
+    if (!rt.active) return;
+    rt.active = false;
+    if (w.pin >= 0 && w.pin < static_cast<int>(model_.pins.size()))
+        update_pin(static_cast<size_t>(w.pin), 0,
+                   pins_[w.pin].function.load(), pins_[w.pin].direction.load());
+}
+
+void Cpu::update_wave(size_t index) {
+    if (index >= wave_rt_.size()) return;
+    WaveRuntime& rt = wave_rt_[index];
+    const GpioWaveDesc& w = model_.gpio_waves[index];
+    if (!rt.active || w.pin < 0 || w.pin >= static_cast<int>(model_.pins.size()))
+        return;
+    while (rt.active && now_ >= rt.next_toggle) {
+        if (rt.level != 0) {
+            rt.level = 0;
+            rt.next_toggle = now_ + rt.low;
+            if (rt.remaining > 0) {
+                --rt.remaining;
+                if (rt.remaining == 0) rt.finish_after_low = true;
+            }
+        } else {
+            if (rt.finish_after_low) {
+                rt.active = false;
+                update_pin(static_cast<size_t>(w.pin), 0,
+                           pins_[w.pin].function.load(),
+                           pins_[w.pin].direction.load());
+                break;
+            }
+            rt.level = 1;
+            rt.next_toggle = now_ + rt.high;
+        }
+        update_pin(static_cast<size_t>(w.pin), rt.level,
+                   pins_[w.pin].function.load(), pins_[w.pin].direction.load());
     }
 }
 
@@ -641,7 +820,6 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
         has_input = true;
     }
     if (has_input) v = merged;
-
     v = on_peripheral_mmio_read(space, addr, v, width);
     apply_actions(model_, shm_, reg->on_read);
     isa_->on_mmio_read(model_, *this, space, addr, width);
@@ -651,12 +829,13 @@ uint32_t Cpu::handle_mmio_read(const SpaceId& space, Addr addr, uint8_t width) {
 void Cpu::check_inject_slots() {
     auto* ih = inject_header_;
     auto* slots = inject_slots_;
-    uint32_t tail = ih->tail.load(std::memory_order_acquire);
     uint32_t head = ih->head.load(std::memory_order_acquire);
-    if (tail == head) return;
+    uint32_t tail = ih->tail.load(std::memory_order_acquire);
+    if (head == tail) return;
     const uint32_t cap = inject_capacity_;
-    while (tail != head) {
-        InjectSlot& s = slots[tail % cap];
+    uint32_t budget = cap;
+    while (head != tail && budget-- > 0) {
+        InjectSlot& s = slots[head % cap];
         if (s.ready.load(std::memory_order_acquire)) {
             uint32_t idx = s.space_idx.load();
             std::vector<SpaceId> mmio_spaces;
@@ -675,8 +854,13 @@ void Cpu::check_inject_slots() {
             }
             s.ready.store(0, std::memory_order_release);
         }
-        tail++;
-        ih->tail.store(tail, std::memory_order_release);
+        head++;
+        ih->head.store(head, std::memory_order_release);
+    }
+    if (head != tail) {
+        // 队列索引异常时丢弃剩余项，避免一次消费几亿个槽位。
+        MCUS_WARN("inject queue out of sync, resyncing");
+        ih->head.store(tail, std::memory_order_release);
     }
 }
 
@@ -896,7 +1080,11 @@ void Cpu::complete_adc(size_t index) {
     const AdcDesc& a = model_.adcs[index];
 
     uint32_t sample = 0;
-    if (rt.channel < a.channel_pins.size()) {
+    const uint32_t key = (static_cast<uint32_t>(index) << 8) | rt.channel;
+    auto sit = adc_stream_samples_.find(key);
+    if (sit != adc_stream_samples_.end()) {
+        sample = sit->second;
+    } else if (rt.channel < a.channel_pins.size()) {
         const uint32_t pin = a.channel_pins[rt.channel];
         if (pin != UINT32_MAX && pin < model_.pins.size())
             sample = pins_[pin].value.load();
@@ -904,7 +1092,7 @@ void Cpu::complete_adc(size_t index) {
     const RegisterDesc* drd = model_.find_register(a.space, a.data);
     const uint8_t dw = drd ? drd->width : 8;
     if (dw < 32) sample &= ((1u << dw) - 1u);
-    write_reg8(a.space, a.data, sample);
+    write_reg_value(a.space, a.data, sample);
 
     const Addr flag_addr = a.status != 0 ? a.status : a.ctrl;
     uint32_t flag = read_reg8(a.space, flag_addr);
@@ -992,12 +1180,15 @@ void Cpu::advance_peripherals(VirtTime delta) {
         }
     }
 
+    for (size_t i = 0; i < wave_rt_.size(); ++i) update_wave(i);
+
     uint32_t active = 0;
     for (const auto& rt : uart_rt_) if (rt.tx_pending) active |= 1u;
     for (const auto& rt : spi_rt_) if (rt.busy) active |= 2u;
     for (const auto& rt : pwm_rt_) if (rt.started) active |= 4u;
     for (const auto& rt : adc_rt_) if (rt.busy) active |= 8u;
     for (const auto& rt : tkey_rt_) if (rt.busy) active |= 16u;
+    for (const auto& rt : wave_rt_) if (rt.active) active |= 128u;
     periph_active_ = active;
 }
 
@@ -1044,6 +1235,80 @@ void Cpu::poll_bus_in() {
                     complete_spi(i);
                     break;
                 }
+            } else if (kind == BusEventKind::I2cData &&
+                       b.direction ==
+                           static_cast<uint8_t>(BusDirection::ToMcu)) {
+                const size_t idx = b.bus_id;
+                if (idx >= model_.i2cs.size()) continue;
+                const I2cDesc& d = model_.i2cs[idx];
+                uint8_t byte = b.len ? b.data[0] : 0;
+                write_reg_value(d.space, d.data, byte);
+                uint32_t stat = read_reg_value(d.space, d.stat);
+                stat |= (1u << d.done_bit) | (1u << d.ack_bit);
+                stat &= static_cast<uint32_t>(~(1u << d.busy_bit));
+                write_reg_value(d.space, d.stat, stat);
+                i2c_rt_[idx].busy = false;
+                if (d.signal_irq_on_done && d.irq != 0) set_irq_pending(d.irq);
+            } else if (kind == BusEventKind::CanFrame &&
+                       b.direction ==
+                           static_cast<uint8_t>(BusDirection::ToMcu)) {
+                const size_t idx = b.bus_id;
+                if (idx >= model_.cans.size()) continue;
+                const CanDesc& d = model_.cans[idx];
+                if (b.len >= 4) {
+                    uint32_t id;
+                    std::memcpy(&id, b.data, 4);
+                    write_reg_value(d.space, d.id, id);
+                    const uint16_t n = static_cast<uint16_t>(
+                        std::min<uint32_t>(b.len - 4, 8));
+                    write_reg_value(d.space, d.dlc, n);
+                    for (uint16_t i = 0; i < n; ++i) {
+                        uint8_t v = b.data[4 + i];
+                        if (i < 4) {
+                            uint32_t cur = read_reg_value(d.space, d.data);
+                            cur = (cur & ~(0xFFu << (8 * i))) |
+                                  (static_cast<uint32_t>(v) << (8 * i));
+                            write_reg_value(d.space, d.data, cur);
+                        } else if (d.data_hi != 0) {
+                            const uint32_t j = i - 4;
+                            uint32_t cur = read_reg_value(d.space, d.data_hi);
+                            cur = (cur & ~(0xFFu << (8 * j))) |
+                                  (static_cast<uint32_t>(v) << (8 * j));
+                            write_reg_value(d.space, d.data_hi, cur);
+                        }
+                    }
+                }
+                uint32_t stat = read_reg_value(d.space, d.stat);
+                stat |= (1u << d.done_bit);
+                stat &= static_cast<uint32_t>(~(1u << d.busy_bit));
+                write_reg_value(d.space, d.stat, stat);
+                can_rt_[idx].busy = false;
+                if (d.signal_irq_on_done && d.irq != 0) set_irq_pending(d.irq);
+            } else if (kind == BusEventKind::AdcSample &&
+                       b.direction ==
+                           static_cast<uint8_t>(BusDirection::ToMcu)) {
+                if (b.bus_id >= model_.adcs.size()) continue;
+                uint32_t sample = 0;
+                std::memcpy(&sample, b.data, std::min<uint16_t>(b.len, 4));
+                const uint8_t channel = b.flags;
+                adc_stream_samples_[(static_cast<uint32_t>(b.bus_id) << 8) |
+                                    channel] = sample;
+            } else if (kind == BusEventKind::EncoderDelta &&
+                       b.direction ==
+                           static_cast<uint8_t>(BusDirection::ToMcu)) {
+                const size_t idx = b.bus_id;
+                if (idx >= model_.encoders.size()) continue;
+                const EncoderDesc& d = model_.encoders[idx];
+                int32_t delta = 0;
+                std::memcpy(&delta, b.data, std::min<uint16_t>(b.len, 4));
+                EncoderRuntime& rt = encoder_rt_[idx];
+                rt.count += delta;
+                const RegisterDesc* crd = model_.find_register(d.space, d.count);
+                const uint8_t w = crd ? crd->width : 8;
+                const uint64_t mask = w >= 64 ? ~0ull : ((1ull << w) - 1);
+                write_reg_value(d.space, d.count,
+                                static_cast<uint32_t>(rt.count & mask));
+                if (d.irq != 0) set_irq_pending(d.irq);
             }
         } else if (ev.type == DebugEventType::Usb) {
             const UsbEvent& u = ev.u.usb;
@@ -1126,56 +1391,57 @@ void Cpu::poll_bus_in() {
 }
 
 void Cpu::poll_external_pins() {
-    if (pin_poll_skip_ != 0) {
-        --pin_poll_skip_;
+    PinState* pins = pins_;
+
+    auto process_value = [&](size_t i) {
+        if (i >= last_pin_value_.size()) return;
+        const uint32_t value = pins[i].value.load(std::memory_order_relaxed);
+        if (value == last_pin_value_[i]) return;
+        const PinDesc& pd = model_.pins[i];
+        const uint32_t function =
+            pins[i].function.load(std::memory_order_relaxed);
+        const uint32_t direction =
+            pins[i].direction.load(std::memory_order_relaxed);
+        DebugEvent ev{};
+        ev.time = now_;
+        ev.type = DebugEventType::Pin;
+        ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function,
+                            direction, 1};
+        if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
+        last_pin_value_[i] = value;
+        last_pin_function_[i] = function;
+        last_pin_direction_[i] = direction;
+        on_pin_change(i, value);
+
+        // 外部驱动的输入引脚变化 -> GPIO 边沿中断。
+        if (model_.gpio_irq.present && direction == 0 && function == 0 &&
+            pd.source_reg != 0 && model_.gpio_irq.enable_bits != 0) {
+            const uint32_t en = read_reg8(model_.gpio_irq.enable_space,
+                                          model_.gpio_irq.enable_reg);
+            const uint32_t bit =
+                (pd.number - model_.gpio_irq.enable_bit_base) %
+                model_.gpio_irq.enable_bits;
+            if (en & (1u << bit))
+                set_irq_pending(model_.gpio_irq.irq);
+        }
+    };
+
+    const bool full = (pin_poll_skip_ == 0);
+    if (full) pin_poll_skip_ = pin_poll_interval_ - 1;
+    else --pin_poll_skip_;
+
+    // 编码器/捕获引脚每步采样；其他引脚按 pin_poll_interval_ 降频。
+    if (!full && pin_poll_interval_ > 1) {
+        for (uint32_t idx : fast_pin_indices_) process_value(idx);
         return;
     }
-    pin_poll_skip_ = pin_poll_interval_ - 1;
-    PinState* pins = pins_;
-    const bool slow = (pin_slow_counter_++ & 0x3Fu) == 0;
-    uint32_t gpio_enable = 0;
-    if (slow && model_.gpio_irq.present) {
-        gpio_enable = read_reg8(model_.gpio_irq.enable_space,
-                                model_.gpio_irq.enable_reg);
-    }
 
+    const bool slow = (pin_slow_counter_++ & 0x3Fu) == 0;
     for (size_t i = 0; i < model_.pins.size(); ++i) {
+        process_value(i);
+        if (!slow) continue;
         const PinDesc& pd = model_.pins[i];
         const uint32_t value = pins[i].value.load(std::memory_order_relaxed);
-        if (i < last_pin_value_.size() && value != last_pin_value_[i]) {
-            // 值变化时才读取 function/direction，保证事件和 GPIO 边沿准确。
-            const uint32_t function =
-                pins[i].function.load(std::memory_order_relaxed);
-            const uint32_t direction =
-                pins[i].direction.load(std::memory_order_relaxed);
-            DebugEvent ev{};
-            ev.time = now_;
-            ev.type = DebugEventType::Pin;
-            ev.u.pin = PinEvent{static_cast<uint32_t>(i), value, function,
-                                direction, 1};
-            if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
-            last_pin_value_[i] = value;
-            last_pin_function_[i] = function;
-            last_pin_direction_[i] = direction;
-
-            // 外部驱动的输入引脚变化 -> GPIO 边沿中断。
-            if (model_.gpio_irq.present && direction == 0 && function == 0 &&
-                pd.source_reg != 0 && model_.gpio_irq.enable_bits != 0) {
-                const uint32_t en = slow
-                    ? gpio_enable
-                    : read_reg8(model_.gpio_irq.enable_space,
-                                model_.gpio_irq.enable_reg);
-                const uint32_t bit =
-                    (pd.number - model_.gpio_irq.enable_bit_base) %
-                    model_.gpio_irq.enable_bits;
-                if (en & (1u << bit))
-                    set_irq_pending(model_.gpio_irq.irq);
-            }
-            continue;
-        }
-
-        // function/direction 是配置类状态，低频扫描即可。
-        if (!slow) continue;
         const uint32_t function = pins[i].function.load(std::memory_order_relaxed);
         const uint32_t direction = pins[i].direction.load(std::memory_order_relaxed);
         if (i < last_pin_function_.size() &&
@@ -1198,6 +1464,7 @@ void Cpu::poll_external_pins() {
             if (!stream_.push(ev)) MCUS_WARN("event stream full (pin)");
             last_pin_direction_[i] = direction;
         }
+        (void)pd;
     }
 }
 
@@ -1289,6 +1556,92 @@ void Cpu::on_peripheral_mmio_write(const SpaceId& space, Addr addr,
         if (space != p.space || addr != p.ctrl) continue;
         pwm_rt_[i].started = true;
         periph_active_ |= 4u;
+    }
+
+    for (size_t i = 0; i < model_.i2cs.size(); ++i) {
+        const I2cDesc& d = model_.i2cs[i];
+        if (space != d.space) continue;
+        I2cRuntime& rt = i2c_rt_[i];
+        if (addr == d.ctrl) {
+            uint32_t stat = read_reg_value(d.space, d.stat);
+            if (value & (1u << d.start_bit)) {
+                emit_bus_event(static_cast<uint32_t>(i), BusEventKind::I2cStart,
+                               BusDirection::ToHost, next_bus_xfer_id_++, nullptr, 0);
+                rt.busy = true;
+                stat |= (1u << d.busy_bit);
+                stat &= static_cast<uint32_t>(~(1u << d.done_bit));
+                write_reg_value(d.space, d.stat, stat);
+            }
+            if (value & (1u << d.stop_bit)) {
+                emit_bus_event(static_cast<uint32_t>(i), BusEventKind::I2cStop,
+                               BusDirection::ToHost, next_bus_xfer_id_++, nullptr, 0);
+                rt.busy = false;
+                stat &= static_cast<uint32_t>(~(1u << d.busy_bit));
+                write_reg_value(d.space, d.stat, stat);
+            }
+        } else if (addr == d.data) {
+            uint8_t b = static_cast<uint8_t>(value);
+            rt.busy = true;
+            rt.xfer_id = next_bus_xfer_id_++;
+            emit_bus_event(static_cast<uint32_t>(i), BusEventKind::I2cData,
+                           BusDirection::ToHost, rt.xfer_id, &b, 1);
+            uint32_t stat = read_reg_value(d.space, d.stat);
+            stat |= (1u << d.busy_bit);
+            write_reg_value(d.space, d.stat, stat);
+        }
+    }
+
+    for (size_t i = 0; i < model_.cans.size(); ++i) {
+        const CanDesc& d = model_.cans[i];
+        if (space != d.space || addr != d.data) continue;
+        CanRuntime& rt = can_rt_[i];
+        const uint32_t id = read_reg_value(d.space, d.id);
+        const uint32_t dlc = read_reg_value(d.space, d.dlc) & 0x0Fu;
+        uint8_t evdata[12]{};
+        std::memcpy(evdata, &id, 4);
+        const uint16_t payload = static_cast<uint16_t>(
+            std::min<uint32_t>(dlc, 8));
+        std::memcpy(evdata + 4, &value, std::min<uint32_t>(payload, 4));
+        if (payload > 4 && d.data_hi != 0) {
+            const uint32_t hi = read_reg_value(d.space, d.data_hi);
+            std::memcpy(evdata + 8, &hi, std::min<uint32_t>(payload - 4, 4));
+        }
+        rt.busy = true;
+        uint8_t flags = d.extended ? 1u : 0u;
+        emit_bus_event(static_cast<uint32_t>(i), BusEventKind::CanFrame,
+                       BusDirection::ToHost, next_bus_xfer_id_++, evdata,
+                       static_cast<uint16_t>(4 + payload), flags);
+        uint32_t stat = read_reg_value(d.space, d.stat);
+        stat |= (1u << d.busy_bit);
+        write_reg_value(d.space, d.stat, stat);
+    }
+
+    for (size_t i = 0; i < model_.dacs.size(); ++i) {
+        const DacDesc& d = model_.dacs[i];
+        if (space != d.space || addr != d.data) continue;
+        const uint32_t mask = d.bits >= 32 ? 0xFFFFFFFFu : ((1u << d.bits) - 1u);
+        const uint32_t v = value & mask;
+        uint8_t data[4];
+        std::memcpy(data, &v, 4);
+        emit_bus_event(static_cast<uint32_t>(i), BusEventKind::DacWrite,
+                       BusDirection::ToHost, next_bus_xfer_id_++, data, 4,
+                       d.channel);
+    }
+
+    for (size_t i = 0; i < model_.encoders.size(); ++i) {
+        const EncoderDesc& d = model_.encoders[i];
+        if (space != d.space || d.ctrl == 0 || addr != d.ctrl) continue;
+        if (value & (1u << d.reset_bit)) {
+            encoder_rt_[i].count = 0;
+            write_reg_value(d.space, d.count, 0);
+        }
+    }
+
+    for (size_t i = 0; i < model_.gpio_waves.size(); ++i) {
+        const GpioWaveDesc& d = model_.gpio_waves[i];
+        if (space != d.space || addr != d.ctrl) continue;
+        if (value & (1u << d.start_bit)) start_wave(i, value);
+        if (value & (1u << d.stop_bit)) stop_wave(i);
     }
 
     if (model_.usb.present && space == model_.usb.space) {
@@ -1426,7 +1779,6 @@ bool Cpu::check_breakpoint() {
 VirtTime Cpu::step() {
     if (halted_.load(std::memory_order_relaxed)) return 0;
     if (paused_.load(std::memory_order_relaxed)) return 0;
-
     check_reset_pin();
     poll_bus_in();
     poll_external_pins();

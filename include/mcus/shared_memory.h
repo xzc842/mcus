@@ -42,6 +42,7 @@ struct PinState {
     std::atomic<uint32_t> function;
     std::atomic<uint32_t> value;
     std::atomic<uint32_t> direction;
+    std::atomic<uint32_t> external;  // 1=外部调试程序持有该引脚电平
 };
 
 struct InjectSlot {

@@ -25,6 +25,7 @@
 #include <string>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <cstdio>
 
 using namespace mcus;
 

@@ -222,6 +222,12 @@ models/
 | `input_space` | string | 输入寄存器空间（可选） |
 | `input_reg` | uint32 | 输入寄存器地址（如 GPIO IDR） |
 | `input_bit` | uint8 | 输入位 |
+| `mux_space` | string | 复用控制寄存器空间（可选） |
+| `mux_reg` | uint32 | 复用控制寄存器地址 |
+| `mux_shift` | uint8 | 复用字段起始位 |
+| `mux_width` | uint8 | 复用字段宽度 |
+
+**`mux_*` 可选：寄存器字段值对应 `functions` 下标，写该寄存器时核心更新 `PinState.function`。**
 
 **`source_space`/`source_reg`/`source_bit` 用于寄存器位到引脚表的同步。** **`P1` 写 `0xFE`，`P1.0` 的 `source_bit=0`，引脚表 `P1.0` 的 `value=0`。**
 
@@ -393,7 +399,12 @@ models/
 
 写 `ctrl.start_bit=1` 启动扫描；`scan_cycles` 后把各通道引脚电平拼成 `data_bits` 位写入 `datl`/`dath`，并置 `if_bit`。
 
-### 9.6 `gpio_irq`
+### 9.6 总线与波形接口
+
+`i2cs`、`cans`、`dacs`、`encoders`、`captures`、`gpio_waves` 的字段和事件协议见
+[docs/interfaces.md](interfaces.md)。
+
+### 9.7 `gpio_irq`
 
 ```json
 "gpio_irq": {
@@ -406,7 +417,7 @@ models/
 
 **方向约定：`direction=0` 是输入，`1` 是输出。** 端口读会始终把 `PinState.value` 叠加回寄存器，因此外部程序注入电平不依赖方向位；方向位主要用于 GPIO 边沿中断和对外描述。CH552 的 `P1_DIR_PU`/`P3_DIR_PU` 复位值是 `0xFF`（输出），GPIO 中断只在输入方向下触发。
 
-### 9.7 `usb`
+### 9.8 `usb`
 
 ```json
 "usb": {

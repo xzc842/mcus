@@ -56,6 +56,11 @@ enum class BusEventKind : uint8_t {
     UartTx = 5,
     UartRx = 6,
     PinEdge = 7,
+    CanFrame = 8,
+    DacWrite = 9,
+    AdcSample = 10,
+    EncoderDelta = 11,
+    PwmCapture = 12,
 };
 
 enum class BusDirection : uint8_t { ToHost = 0, ToMcu = 1 };

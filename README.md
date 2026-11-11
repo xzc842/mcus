@@ -52,6 +52,17 @@
 
 UART/SPI/USB 的具体收发约定见 [docs/external.md](docs/external.md)，ARM/STM32 见 [docs/stm32.md](docs/stm32.md)。
 
+### 通用数据流接口
+
+核心统一支持并走 `DebugEvent` 事件流：
+
+- UART、SPI、I2C、CAN、USB；
+- ADC、DAC、PWM、正交编码器；
+- GPIO 脉宽输入和 GPIO 波形输出；
+- 模型驱动的引脚复用（`pins[].mux_*`）。
+
+字段、事件格式和示例见 [docs/interfaces.md](docs/interfaces.md)。
+
 ### STC90C51RC（8051）
 
 仓库提供 `models/stc90c51.json`：
@@ -112,9 +123,9 @@ Release 实测（2026-11-08，Intel Core Ultra 5 225H，Linux 7.0.0-42-generic�
 
 ### 外部设备模型边界
 
-- UART/SPI 只有“寄存器 + 事件”的主机侧，真实对端（串口设备、SPI 从机）由外部程序通过 `push_in()` 模拟。
+- UART/SPI/I2C/CAN 的“真实对端”（串口设备、SPI/I2C 从机、CAN 节点）由外部程序通过 `push_in()` 模拟。
 - USB 已实现端点缓冲、SETUP/IN/OUT 包事件和 USB 中断；但 CH552 的 USB DMA/T_LEN 等 xSFR 尚未建模，端点缓冲固定映射在模型 `usb.buffer_base` 指定的 xRAM 区域。
-- I2C 的 `BusEventKind` 已预留，但 CH552G 模型没有 I2C 外设，暂未启用。
+- ADC 可注入采样值，DAC 输出数字转换事件；GPIO 脉宽、波形和编码器都走 `PinEvent`/`BusEvent`，详细格式见 [docs/interfaces.md](docs/interfaces.md)。
 
 ## 构建与运行
 

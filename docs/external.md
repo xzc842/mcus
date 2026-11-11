@@ -1,6 +1,6 @@
 # 外部程序与 mcus 的交互
 
-> **说明**：事件流是双向 `DebugEvent` 流，记录类型为 `Mmio / Pin / Bus / Irq / Usb`；同一个共享内存对象里包含 out/in 两个 SPSC 环，`EventStream` 支持 `create=false` 的 attach 模式，以及 `push_in()`/`pop_in()` 反向收发。以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
+> **说明**：事件流是双向 `DebugEvent` 流，记录类型为 `Mmio / Pin / Bus / Irq / Usb`；`Bus` 包含 UART/SPI/I2C/CAN/DAC/ADC/编码器/捕获事件；同一个共享内存对象里包含 out/in 两个 SPSC 环，`EventStream` 支持 `create=false` 的 attach 模式，以及 `push_in()`/`pop_in()` 反向收发。以 `include/mcus/types.h` 和 `include/mcus/event_stream.h` 为准。
 
 外部程序不属于 mcus 项目，通过 POSIX 共享内存和事件流与模拟器交互。**外部程序不链接 `libmcus_core` 的模拟器部分，只通过共享内存和事件流读写；可以链接 `libmcus_core` 的 `SharedMemory`/`EventStream` 类简化访问。**
 
@@ -473,7 +473,19 @@ if (stream.pop(req) && req.type == mcus::DebugEventType::Bus &&
 }
 ```
 
-### 10.4 USB 包事件
+### 10.4 I2C / CAN / DAC / ADC / 编码器 / GPIO 波形
+
+这些接口都使用 `DebugEventType::Bus`，详细字段、事件格式和模型示例见
+[docs/interfaces.md](interfaces.md)。
+
+- `I2cStart/I2cData/I2cStop`
+- `CanFrame`
+- `DacWrite`
+- `AdcSample`
+- `EncoderDelta`
+- `PwmCapture`
+
+### 10.5 USB 包事件
 
 USB 使用 `DebugEventType::Usb`，`UsbEvent` 的 `data[64]` 正好是 Full-Speed 最大包：
 
@@ -522,13 +534,13 @@ EP2 TX = xram 84
 
 因此不能假设所有端点等距 64 字节。
 
-### 10.5 背压
+### 10.6 背压
 
 - **out 满**：模拟器置 `backpressure_out=1`，`cpu_loop` 暂停 CPU，直到外部程序 `pop()`。
 - **in 满**：`push_in()` 返回 `false` 并置 `backpressure_in=1`，外部程序应重试。
 - 模拟器侧 `EventStream::full()`/`in_full()` 可查询状态。
 
-### 10.6 全局序号
+### 10.7 全局序号
 
 `push()` 和 `push_in()` 都会从共享内存头的 `seq` 原子取号，因此 out/in 两个方向的事件
 可以直接按 `seq` 排序，不需要额外的关联字段；总线请求/响应仍用 `xfer_id` 配对。

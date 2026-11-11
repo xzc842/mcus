@@ -1,0 +1,450 @@
+{
+  "name": "interface_test",
+  "description": "generic stream interface test model",
+  "arch": "mcus-minimal",
+  "crystal_hz": 16000000,
+  "cycles_per_instruction": 1,
+  "reset_vector": 0,
+  "reset_space": "code",
+  "initial_sp": 4096,
+  "sp_space": "ram",
+  "isa_extensions": [],
+  "arch_desc": {
+    "irq_push_bytes": 2,
+    "stack_grows_down": true,
+    "fast_spaces": [
+      "code",
+      "ram"
+    ],
+    "reset_space": "code",
+    "reset_vector": 0,
+    "sp_space": "ram",
+    "initial_sp": 4096,
+    "sp_reg": 0,
+    "sp_reg_space": "ram",
+    "has_pc_reg": false
+  },
+  "regions": [
+    {
+      "name": "code",
+      "space": "code",
+      "base": 0,
+      "size": 4096,
+      "is_mmio": false,
+      "read_only": true
+    },
+    {
+      "name": "ram",
+      "space": "ram",
+      "base": 4096,
+      "size": 4096,
+      "is_mmio": false
+    },
+    {
+      "name": "mmio",
+      "space": "mmio",
+      "base": 1073741824,
+      "size": 256,
+      "is_mmio": true
+    }
+  ],
+  "registers": [
+    {
+      "name": "MUX",
+      "space": "mmio",
+      "addr": 1073741824,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C_CTRL",
+      "space": "mmio",
+      "addr": 1073741840,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C_DATA",
+      "space": "mmio",
+      "addr": 1073741841,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "I2C_STAT",
+      "space": "mmio",
+      "addr": 1073741842,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_CTRL",
+      "space": "mmio",
+      "addr": 1073741856,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_STAT",
+      "space": "mmio",
+      "addr": 1073741857,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_ID",
+      "space": "mmio",
+      "addr": 1073741858,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_DATA",
+      "space": "mmio",
+      "addr": 1073741862,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_DLC",
+      "space": "mmio",
+      "addr": 1073741866,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "DAC_CTRL",
+      "space": "mmio",
+      "addr": 1073741872,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "DAC_DATA",
+      "space": "mmio",
+      "addr": 1073741876,
+      "width": 16,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ENC_COUNT",
+      "space": "mmio",
+      "addr": 1073741888,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ENC_CTRL",
+      "space": "mmio",
+      "addr": 1073741892,
+      "width": 8,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAP_WIDTH",
+      "space": "mmio",
+      "addr": 1073741904,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "WAVE_CTRL",
+      "space": "mmio",
+      "addr": 1073741920,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "WAVE_PERIOD",
+      "space": "mmio",
+      "addr": 1073741924,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "WAVE_HIGH",
+      "space": "mmio",
+      "addr": 1073741928,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC_CTRL",
+      "space": "mmio",
+      "addr": 1073741936,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC_CFG",
+      "space": "mmio",
+      "addr": 1073741940,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC_DATA",
+      "space": "mmio",
+      "addr": 1073741944,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "ADC_STATUS",
+      "space": "mmio",
+      "addr": 1073741948,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    },
+    {
+      "name": "CAN_DATA_HI",
+      "space": "mmio",
+      "addr": 1073741870,
+      "width": 32,
+      "semantics": "plain",
+      "reset_value": 0
+    }
+  ],
+  "pins": [
+    {
+      "name": "PA0",
+      "number": 0,
+      "functions": [
+        "gpio",
+        "enc_a",
+        "can_rx"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 0,
+      "mux_width": 2
+    },
+    {
+      "name": "PA1",
+      "number": 1,
+      "functions": [
+        "gpio",
+        "enc_b"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 2,
+      "mux_width": 2
+    },
+    {
+      "name": "PA2",
+      "number": 2,
+      "functions": [
+        "gpio",
+        "capture"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 4,
+      "mux_width": 2
+    },
+    {
+      "name": "PA3",
+      "number": 3,
+      "functions": [
+        "gpio",
+        "wave"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 6,
+      "mux_width": 2
+    },
+    {
+      "name": "PA4",
+      "number": 4,
+      "functions": [
+        "gpio",
+        "dac"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 8,
+      "mux_width": 2
+    },
+    {
+      "name": "PA5",
+      "number": 5,
+      "functions": [
+        "gpio",
+        "i2c_scl",
+        "adc0"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 10,
+      "mux_width": 2
+    },
+    {
+      "name": "PA6",
+      "number": 6,
+      "functions": [
+        "gpio",
+        "i2c_sda"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 12,
+      "mux_width": 2
+    },
+    {
+      "name": "PA7",
+      "number": 7,
+      "functions": [
+        "gpio",
+        "can_tx"
+      ],
+      "reset_function": 0,
+      "mux_space": "mmio",
+      "mux_reg": 1073741824,
+      "mux_shift": 14,
+      "mux_width": 2
+    }
+  ],
+  "interrupts": [],
+  "timers": [],
+  "i2cs": [
+    {
+      "name": "I2C0",
+      "irq": 0,
+      "space": "mmio",
+      "ctrl": 1073741840,
+      "data": 1073741841,
+      "stat": 1073741842,
+      "start_bit": 0,
+      "stop_bit": 1,
+      "ack_bit": 2,
+      "done_bit": 3,
+      "if_bit": 4,
+      "busy_bit": 7,
+      "scl_pin": "PA5",
+      "sda_pin": "PA6"
+    }
+  ],
+  "cans": [
+    {
+      "name": "CAN0",
+      "irq": 0,
+      "space": "mmio",
+      "ctrl": 1073741856,
+      "stat": 1073741857,
+      "id": 1073741858,
+      "data": 1073741862,
+      "dlc": 1073741866,
+      "start_bit": 0,
+      "done_bit": 1,
+      "if_bit": 2,
+      "busy_bit": 7,
+      "tx_pin": "PA7",
+      "rx_pin": "PA0",
+      "data_hi": 1073741870
+    }
+  ],
+  "dacs": [
+    {
+      "name": "DAC0",
+      "space": "mmio",
+      "ctrl": 1073741872,
+      "data": 1073741876,
+      "channel": 0,
+      "bits": 12,
+      "vref_mv": 3300,
+      "output_pin": "PA4"
+    }
+  ],
+  "encoders": [
+    {
+      "name": "ENC0",
+      "irq": 0,
+      "space": "mmio",
+      "count": 1073741888,
+      "ctrl": 1073741892,
+      "reset_bit": 0,
+      "bits": 32,
+      "a_pin": "PA0",
+      "b_pin": "PA1",
+      "step": 1
+    }
+  ],
+  "captures": [
+    {
+      "name": "CAP0",
+      "irq": 0,
+      "space": "mmio",
+      "width": 1073741904,
+      "pin": "PA2",
+      "measure_high": true,
+      "signal_irq_on_done": false
+    }
+  ],
+  "gpio_waves": [
+    {
+      "name": "WAVE0",
+      "irq": 0,
+      "space": "mmio",
+      "ctrl": 1073741920,
+      "period": 1073741924,
+      "high": 1073741928,
+      "start_bit": 0,
+      "stop_bit": 1,
+      "pin": "PA3",
+      "repeat": 0
+    }
+  ],
+  "adcs": [
+    {
+      "name": "ADC0",
+      "irq": 0,
+      "space": "mmio",
+      "ctrl": 1073741936,
+      "cfg": 1073741940,
+      "data": 1073741944,
+      "status": 1073741948,
+      "start_bit": 0,
+      "if_bit": 0,
+      "busy_bit": 1,
+      "conversion_cycles": 10,
+      "channel_mask": 15,
+      "channel_shift": 0,
+      "channels": [
+        {
+          "channel": 0,
+          "pin": "PA5"
+        }
+      ]
+    }
+  ]
+}
