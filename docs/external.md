@@ -179,6 +179,10 @@ struct PinState {
 ```cpp
 mcus::PinState* pins = shm.pins();
 uint32_t p10_value = pins[0].value.load();   // P1.0 是 pins[0]
+
+// 外部主动驱动电平：写值并置 hold 位，避免 CPU 端口写覆盖。
+shm.set_pin_value(0, 0);       // P1.0 拉低并保持
+shm.release_pin(0);            // 释放，之后允许 CPU 端口写更新
 ```
 
 **引脚顺序按 `Model::pins`，`ch552g.json` 的 `P1.0`–`P1.7`、`P3.0`–`P3.7`、`RST`。**
@@ -666,7 +670,7 @@ int main() {
 
 ## 15. 兼容性说明
 
-- 共享内存的 `ControlBlock`、`PinState`、`Inject*`、`Breakpoint*` 和事件流 `Header` 布局未变；`PinEvent` 增加了 `pulse_width` 字段，`DebugEvent` 大小变化，直接 mmap 事件流的外部程序需要按当前头文件重新编译；
+- 共享内存的 `ControlBlock`、`PinState`、`Inject*`、`Breakpoint*` 和事件流 `Header` 布局未变；`PinState` 仍为 `function/value/direction` 三个 `atomic`，外部 hold 位图位于共享内存尾部，旧偏移不变；`PinEvent` 增加了 `pulse_width` 字段，`DebugEvent` 大小变化，直接 mmap 事件流的外部程序需要按当前头文件重新编译；
 - 使用 C++ `SharedMemory`/`EventStream` 类的外部程序需要按当前头文件重新编译（类新增了私有缓存成员，类大小变了）；
 - `EventStream::push_in()` 会置 `host_attached`；模拟器只在 `host_attached=1` 时轮询 in 环。直接 mmap 写 in 环的外部程序必须自己把 `Header.host_attached` 置 1；
 - 所有 GPIO 每步采样，外部引脚注入和脉宽测量最多延迟 1 条指令。
@@ -678,7 +682,7 @@ int main() {
 3. **`atomic` 操作跨进程，外部程序用 `std::atomic` 的 `load`/`store`，或者 `__atomic_load_n`/`__atomic_store_n`；**
 4. **事件流有 out/in 两个环：外部程序 `pop()` 消费 out、`push_in()` 生产 in；两个环的 `head`/`tail` 都是 `uint64_t`，满时分别置 `backpressure_out`/`backpressure_in`；**
 5. **中断位图 `bm[i] |= (1 << b)`，外部程序写，模拟器 `check_interrupt` 读，`enter_interrupt` 清；**
-6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序可写 `value` 注入电平，模拟器端口读会把 `value` 叠加回寄存器；`direction=0` 时输入引脚变化还会触发 GPIO 边沿中断；**
+6. **引脚表 `value`/`function`/`direction` 是 `atomic`，外部程序可写 `value` 注入电平；主动驱动时应调用 `set_pin_value()`（在尾部 hold 位图标记），否则 CPU 端口写可能覆盖；`direction=0` 时输入引脚变化还会触发 GPIO 边沿中断；**
 7. **所有 GPIO 每步采样；`PinEvent.pulse_width` 记录上一个电平宽度，外部输入变化最多延迟 1 条指令；**
 8. **断点区 `bh->count`/`sorted`/`min_addr`/`max_addr` 写完后，`hit=0`，`Resume`，模拟器 `check_breakpoint` 二分查；**
 9. **断点命中 `hit=1`，`Resume`/`Step` 清 `hit`，`last_bp_pc_` 跳过当前断点；**

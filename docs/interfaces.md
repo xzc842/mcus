@@ -116,6 +116,21 @@ std::memcpy(b.data, &width, 4);
 `PulseWidth` 的 `bus_id` 是引脚号，不是 capture 索引；同一引脚连续输入多个脉冲会排队执行。
 这与直接写 `PinState.value` 等价，但宽度由事件参数精确指定，不需要外部程序自己计时。
 
+### 启动时的引脚电平
+
+- 8051/CH552/STC 的准双向端口复位为 `0xFF`，悬空时读高是正常的（弱上拉）；
+- STM32 的 GPIO 复位为浮空输入，IDR 不应假设固定为高或低；
+- 外部要主动驱动一个低/高电平，建议：
+
+```cpp
+// 仿真器用 start_paused=true 启动
+shm.set_pin_value(pin_index, 0);  // 拉低并置 hold 位
+shm.control()->command.store(static_cast<uint32_t>(ControlCommand::Resume));
+```
+
+只写 `PinState.value` 而不通过 `set_pin_value()` 置 hold 位时，CPU 端口写可能把值覆盖回端口锁存器，
+固件随后读到的就是锁存器电平。
+
 ### GPIO 波形输出
 
 - 写 `gpio_waves[].ctrl` 的 `start_bit` 启动，`stop_bit` 停止；

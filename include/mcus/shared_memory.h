@@ -42,7 +42,6 @@ struct PinState {
     std::atomic<uint32_t> function;
     std::atomic<uint32_t> value;
     std::atomic<uint32_t> direction;
-    std::atomic<uint32_t> external;  // 1=外部调试程序持有该引脚电平
 };
 
 struct InjectSlot {
@@ -88,6 +87,18 @@ public:
     ControlBlock* control();
     PinState* pins();
     size_t pin_count() const;
+    // 外部驱动输入：写值并在尾部 hold 位图中标记，防止 CPU 端口写覆盖。
+    void set_pin_value(size_t pin, uint32_t value, bool hold = true) {
+        if (pin >= pin_count()) return;
+        pins()[pin].value.store(value);
+        pin_hold()[pin] = hold ? 1u : 0u;
+    }
+    void release_pin(size_t pin) {
+        if (pin >= pin_count()) return;
+        pin_hold()[pin] = 0;
+    }
+    uint8_t* pin_hold();
+    size_t pin_hold_size() const { return model_.pins.size(); }
     uint8_t* interrupt_bitmap();
     size_t interrupt_bitmap_size() const;
     InjectHeader* inject_header();
@@ -149,6 +160,8 @@ private:
     size_t inject_slots_size_ = 0;
     size_t dump_size_ = 0;
     size_t breakpoint_slots_size_ = 0;
+    size_t pin_hold_offset_ = 0;
+    size_t pin_hold_size_ = 0;
 
     std::unordered_map<std::string, size_t> reg_offset_;
     std::unordered_map<uint64_t, size_t> reg_offset_u64_; // (space_idx<<32)|addr

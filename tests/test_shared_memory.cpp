@@ -53,6 +53,14 @@ int main() {
         shm.reset_all();
         assert(bm[0] == 0);
 
+        static_assert(sizeof(PinState) == 12, "PinState ABI layout");
+        assert(shm.pin_hold_size() == shm.pin_count());
+        shm.set_pin_value(0, 1);
+        assert(shm.pins()[0].value.load() == 1);
+        assert(shm.pin_hold()[0] == 1);
+        shm.release_pin(0);
+        assert(shm.pin_hold()[0] == 0);
+
         auto* ih = shm.inject_header();
         assert(ih->capacity.load() == shm.inject_capacity());
     }

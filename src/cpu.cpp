@@ -103,8 +103,8 @@ Cpu::Cpu(const Model& model, SharedMemory& shm, EventStream& stream)
     }
     ctl_ = shm_.control();
     pins_ = shm_.pins();
-    // 有 GPIO 边沿中断的模型每步采样；纯轮询模型可低频采样以降低开销。
-    // 所有 GPIO 都可作为脉宽输入，因此每步采样全部引脚。
+    pin_hold_ = shm_.pin_hold();
+    // 所有 GPIO 都支持脉宽输入，必须每步采样。
     pin_poll_interval_ = 1u;
     for (const auto& e : model_.encoders) {
         if (e.a_pin >= 0) fast_pin_indices_.push_back(static_cast<uint32_t>(e.a_pin));
@@ -288,7 +288,6 @@ void Cpu::reset() {
         PinState* writable = pins_;
         writable[i].value.store(value);
         writable[i].direction.store(direction);
-        writable[i].external.store(0);
         writable[i].function.store(pd.reset_function);
         last_pin_value_[i] = value;
         last_pin_function_[i] = pd.reset_function;
@@ -504,7 +503,7 @@ void Cpu::update_pin(size_t index, uint32_t value, uint32_t function,
                      uint32_t direction, bool force) {
     PinState* pins = pins_;
     const uint32_t old_value = pins[index].value.load();
-    if (!force && pins[index].external.load()) {
+    if (!force && pin_hold_[index]) {
         // 外部调试程序写入的电平优先于 CPU 对端口锁存器的读写。
         value = old_value;
     }

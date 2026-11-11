@@ -95,6 +95,7 @@ private:
 
     ControlBlock* ctl_ = nullptr;
     PinState* pins_ = nullptr;
+    uint8_t* pin_hold_ = nullptr;
     uint8_t* irq_bitmap_ = nullptr;
     size_t irq_bitmap_size_ = 0;
     InjectHeader* inject_header_ = nullptr;

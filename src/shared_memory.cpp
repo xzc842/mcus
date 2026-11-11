@@ -107,7 +107,9 @@ void SharedMemory::layout() {
     breakpoint_header_offset_ = align4(dump_offset_ + dump_size_);
     breakpoint_slots_offset_ = align4(breakpoint_header_offset_ + sizeof(BreakpointHeader));
     breakpoint_slots_size_ = kBreakpointCapacity * sizeof(BreakpointSlot);
-    total_size_ = align4(breakpoint_slots_offset_ + breakpoint_slots_size_);
+    pin_hold_offset_ = align4(breakpoint_slots_offset_ + breakpoint_slots_size_);
+    pin_hold_size_ = model_.pins.size();
+    total_size_ = align4(pin_hold_offset_ + pin_hold_size_);
 
     size_t max_space = 0;
     for (const auto& rd : model_.registers) {
@@ -148,6 +150,10 @@ uint8_t* SharedMemory::interrupt_bitmap() {
     return static_cast<uint8_t*>(base_) + irq_offset_;
 }
 size_t SharedMemory::interrupt_bitmap_size() const { return irq_size_; }
+uint8_t* SharedMemory::pin_hold() {
+    return static_cast<uint8_t*>(base_) + pin_hold_offset_;
+}
+
 InjectHeader* SharedMemory::inject_header() {
     return reinterpret_cast<InjectHeader*>(static_cast<uint8_t*>(base_) + inject_header_offset_);
 }
@@ -241,6 +247,7 @@ void SharedMemory::reset_all() {
         breakpoints()[i].addr.store(0);
         breakpoints()[i].enabled.store(0);
     }
+    std::memset(pin_hold(), 0, pin_hold_size_);
     auto* ctl = control();
     ctl->dump_ready.store(0);
     ctl->reset_pin.store(0);

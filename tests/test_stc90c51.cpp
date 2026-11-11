@@ -83,6 +83,19 @@ int main() {
             const uint32_t expected = (0xAAu >> i) & 1u;
             assert(shm.pins()[8 + i].value.load() == expected);
         }
+
+        // 外部保持 P1.0 低电平，固件 MOV A,P1 应读到 P1.0=0，而不是锁存器 1。
+        FirmwareImage read_p1;
+        read_p1.load_addr = 0;
+        // MOV P1,#0xFF; MOV A,P1; SJMP $
+        read_p1.data = {0x75, 0x90, 0xFF, 0xE5, 0x90, 0x80, 0xFE};
+        cpu.load_firmware(read_p1);
+        cpu.reset();
+        shm.set_pin_value(8, 0); // P1.0 外部驱动低，CPU 写 P1 不应覆盖
+        cpu.step(); // MOV P1,#0xFF
+        cpu.step(); // MOV A,P1
+        assert(shm.read_reg("sfr", 0xE0, 8) == 0xFE);
+
         std::puts("stc90c51 ok");
     }
 
