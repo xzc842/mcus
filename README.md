@@ -7,6 +7,7 @@
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
 - **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器/外设结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
 - **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 和 `ARM Cortex-M3` 是外部库；单独构建 ISA 见 [docs/isa_build.md](docs/isa_build.md)。
+- **JIT 可选**：8051 可额外加载 `libmcus_jit_8051.so`，把 guest 指令翻译成宿主机器码；每条指令仍执行完整检查，冷代码和未覆盖 opcode 自动回退解释器。`mcus` 和 `mcus_bench` 都支持 `--jit`。
 - **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
 - **统一双向事件流**：MMIO / GPIO / 总线 / 中断 / USB 都进入同一个 `DebugEvent` 共享内存对象，带全局 `seq`，保证顺序；out 环给外部程序消费，in 环把总线响应/UART RX/USB 包送回模拟器；支持 attach 模式，不重置队列。
 - **GPIO 事件化**：引脚只在状态变化时发 PIN 事件，外部程序/插件不轮询引脚；当前值仍可通过 `PinState` 读取。
@@ -96,23 +97,32 @@ cmake --build build-release -j
 ./build-release/mcus_bench --model models/dummy.json
 ./build-release/mcus_bench --model models/ch552g.json \
   --isa ./build-release/libmcus_isa_8051.so
+./build-release/mcus_bench --model models/ch552g.json \
+  --isa ./build-release/libmcus_isa_8051.so \
+  --jit ./build-release/libmcus_jit_8051.so
 ./build-release/mcus_bench --model models/stm32f103c8t6.json \
   --isa ./build-release/libmcus_isa_arm.so
 ```
 
-Release 实测（2026-11-08，Intel Core Ultra 5 225H，Linux 7.0.0-42-generic，
+Release 实测（2026-11-11，Intel Core Ultra 5 225H，Linux 7.0.0-42-generic，
 `-DCMAKE_BUILD_TYPE=Release`，1,000,000 步，warmup 10,000；CPU 项 repeat 3 取最好，
-表中为多次运行的中位数/代表值）：
+表中为多次运行的代表值；本机数据随 CPU 频率/负载有约 ±10% 波动）：
 
-| 模型 / ISA | CPU steps/s | 虚拟周期/s | ns/step | 事件流 events/s | 共享内存 ops/s |
-|---|---:|---:|---:|---:|---:|
-| `dummy` / `mcus-minimal` | 16,650,301 | 66,601,202 | 60.06 | 26,200,000 | 29,200,000 |
-| `ch552g` / `8051` | 15,460,790 | 15,460,790 | 64.68 | 26,100,000 | 43,050,000 |
-| `stm32f103c8t6` / `arm` | 13,589,000 | 13,589,000 | 73.60 | 26,000,000 | 32,800,000 |
+| 模型 / ISA | 模式 | CPU steps/s | 虚拟周期/s | ns/step | 事件流 events/s | 共享内存 ops/s | 相对解释器 | 实时倍数 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `dummy` / `mcus-minimal` | 解释器 | 15,612,851 | 62,451,403 | 64.05 | 25,630,569 | 29,197,620 | 1.00x | — |
+| `ch552g` / `8051` | 解释器 | 19,043,975 | 19,043,975 | 52.51 | 26,456,745 | 42,951,293 | 1.00x | 0.79x |
+| `ch552g` / `8051` | **JIT** | **28,894,974** | **28,894,974** | **34.61** | 26,338,249 | 43,058,348 | **1.52x（+51.7%）** | **1.20x** |
+| `stm32f103c8t6` / `arm` | 解释器 | 12,858,951 | 12,858,951 | 77.66 | 26,395,362 | 33,341,996 | 1.00x | 0.18x |
 
-`dummy` 的虚拟周期是 steps 的 4 倍，因为模型 `cycles_per_instruction=4`；8051/ARM 为 1。
-本机数据随 CPU 频率/负载有约 ±10% 波动；Debug `-O0` 下数字会低一个数量级，不要拿来比较。
-按模型晶振折算，8051 约 0.64x 实时（24MHz），STM32F103 约 0.19x 实时（72MHz）。
+说明：
+
+- `dummy` 的虚拟周期是 steps 的 4 倍，因为模型 `cycles_per_instruction=4`；8051/ARM 为 1；
+- **相对解释器**：JIT 行相对同一模型解释器行（`28,894,974 / 19,043,975 - 1 = +51.7%`）；没有 JIT 的模型为 1.00x；
+- **实时倍数**：`steps/s / crystal_hz`，8051 按 24MHz、STM32F103 按 72MHz；`dummy` 是合成模型，不折算真实芯片；
+- 8051 JIT 通过 `--jit ./build-release/libmcus_jit_8051.so` 启用；每条指令仍执行完整检查，冷代码和未覆盖 opcode 回退解释器；
+- 目前只有 8051 接入 JIT，ARM 仍使用解释器；
+- 顺序固件 `MOV/INC/SJMP` 的 JIT 相对解释器约 1.2x，`blink.bin` 约 1.3x，受固件分支/MMIO/中断影响更大。
 
 `ctest -L bench` 里的三条基准只跑 20,000 步，用于冒烟和防回归，不代表上表性能。
 
@@ -144,6 +154,7 @@ ctest --test-dir build --output-on-failure
 - `build/libmcus_core.so`：模拟器核心
 - `build/libmcus_isa_8051.so`：8051 ISA 动态库（外部加载）
 - `build/libmcus_isa_arm.so`：ARM Cortex-M3 Thumb/Thumb-2 ISA 动态库（外部加载）
+- `build/libmcus_jit_8051.so`：8051 JIT Translator 插件（`mcus --jit` / `mcus_bench --jit`）
 - `build/mcus_bench`：性能基准工具
 - `build/libmcus_isa_sdk.a`：ISA SDK 静态库
 
@@ -181,6 +192,19 @@ mcus --isa <isa.so> --model <model.json> --firmware <firmware> --config <config.
   --firmware build/firmware.hex \
   --config config/example.toml
 ```
+
+启用 8051 JIT：
+
+```bash
+./build/mcus \
+  --isa ./build/libmcus_isa_8051.so \
+  --model models/ch552g.json \
+  --firmware blink.bin \
+  --config config/example.toml \
+  --jit ./build/libmcus_jit_8051.so
+```
+
+也可以在配置文件中写 `[simulator] jit = "..."`；命令行 `--jit` 优先。JIT 路径和解释器路径共用同一套每指令检查与外设推进，未传 `--jit` 时行为不变。
 
 ### 调试工具
 

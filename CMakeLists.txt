@@ -50,6 +50,17 @@ target_link_libraries(mcus_isa_sdk PUBLIC nlohmann_json::nlohmann_json)
 target_compile_options(mcus_isa_sdk PRIVATE -Wall -Wextra -Wpedantic)
 set_target_properties(mcus_isa_sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# JIT：字节码引擎 + 每架构 Translator 插件
+add_library(mcus_jit STATIC src/jit.cpp src/jit_x86.cpp)
+target_include_directories(mcus_jit PUBLIC include)
+target_link_libraries(mcus_jit PUBLIC mcus_isa_sdk ${CMAKE_DL_LIBS})
+target_compile_options(mcus_jit PRIVATE -Wall -Wextra -Wpedantic)
+set_target_properties(mcus_jit PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(mcus_jit_8051 SHARED src/isa_jit_8051.cpp)
+target_link_libraries(mcus_jit_8051 PRIVATE mcus_isa_sdk)
+target_compile_options(mcus_jit_8051 PRIVATE -Wall -Wextra -Wpedantic)
+
 # 模拟器核心：不含具体架构 ISA，ISA 由 .so 动态加载
 add_library(mcus_core SHARED
     src/shared_memory.cpp
@@ -64,6 +75,7 @@ target_include_directories(mcus_core PUBLIC include)
 target_link_libraries(mcus_core
     PUBLIC
         mcus_isa_sdk
+        mcus_jit
         Threads::Threads
         nlohmann_json::nlohmann_json
         toml11::toml11

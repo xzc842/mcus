@@ -37,6 +37,8 @@ public:
 
     void run();
     void stop();
+    bool enable_jit(const std::string& path) { return cpu_.enable_jit(path); }
+    bool jit_enabled() const { return cpu_.jit_enabled(); }
 
 #ifdef MCUS_TEST
     // 仅供单元测试：在无 CPU 线程的情况下直接推进外设时钟。
@@ -67,6 +69,7 @@ private:
     std::thread clock_thread_;
 
     VirtTime acc_clock_ = 0;
+    VirtTime last_jit_now_ = 0;
     uint32_t clock_step_interval_ = 100;
     std::vector<uint64_t> timer_acc_;
 

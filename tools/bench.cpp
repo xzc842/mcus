@@ -49,6 +49,7 @@ namespace {
 struct Options {
     std::string model = "models/dummy.json";
     std::string isa;
+    std::string jit;
     std::string firmware;
     uint64_t steps = 1000000;
     uint64_t warmup = 10000;
@@ -63,6 +64,7 @@ void usage(const char* argv0) {
         << "usage: " << argv0 << " [options]\n"
         << "  --model, -m <model.json>   芯片模型（默认 models/dummy.json）\n"
         << "  --isa, -i <isa.so>         ISA 动态库（mcus-minimal 可省略）\n"
+        << "  --jit <translator.so>      JIT Translator 插件\n"
         << "  --firmware, -f <file>      可选固件；默认生成 tight-loop\n"
         << "  --steps <N>                每次测量的指令数（默认 1000000）\n"
         << "  --warmup <N>               预热指令数（默认 10000）\n"
@@ -88,6 +90,8 @@ Options parse(int argc, char** argv) {
             o.model = next("--model");
         } else if (a == "-i" || a == "--isa") {
             o.isa = next("--isa");
+        } else if (a == "--jit") {
+            o.jit = next("--jit");
         } else if (a == "-f" || a == "--firmware") {
             o.firmware = next("--firmware");
         } else if (a == "--steps") {
@@ -177,7 +181,8 @@ struct CpuResult {
 };
 
 CpuResult run_cpu(const mcus::Model& model, const mcus::FirmwareImage& fw,
-                  uint64_t steps, uint64_t warmup, int round) {
+                  uint64_t steps, uint64_t warmup, int round,
+                  const std::string& jit_path) {
     using namespace mcus;
     const std::string shm_name =
         "/mcus_bench_cpu_" + std::to_string(::getpid()) + "_" +
@@ -192,17 +197,28 @@ CpuResult run_cpu(const mcus::Model& model, const mcus::FirmwareImage& fw,
         EventStream stream(stream_name, 256);
         Cpu cpu(model, shm, stream);
         cpu.load_firmware(fw);
+        const bool use_jit = !jit_path.empty() && cpu.enable_jit(jit_path);
 
-        for (uint64_t i = 0; i < warmup; ++i) {
-            VirtTime dt = cpu.step();
-            if (dt == 0 && cpu.halted()) break;
-            if (dt) cpu.advance_peripherals(dt);
+        if (use_jit) {
+            cpu.run_jit(warmup);
+        } else {
+            for (uint64_t i = 0; i < warmup; ++i) {
+                VirtTime dt = cpu.step();
+                if (dt == 0 && cpu.halted()) break;
+                if (dt) cpu.advance_peripherals(dt);
+            }
         }
 
         const auto t0 = std::chrono::steady_clock::now();
         uint64_t done = 0;
         uint64_t cycles = 0;
-        for (uint64_t i = 0; i < steps; ++i) {
+        if (use_jit) {
+            const VirtTime start = cpu.now();
+            done = cpu.run_jit(steps);
+            cycles = cpu.now() - start;
+        }
+        // JIT 不支持当前 PC 或中途退出时，剩余指令走解释器。
+        for (uint64_t i = done; i < steps; ++i) {
             VirtTime dt = cpu.step();
             if (dt == 0) {
                 if (cpu.halted()) break;
@@ -305,7 +321,7 @@ int main(int argc, char** argv) {
         CpuResult best;
         for (uint32_t r = 0; r < opt.repeat; ++r) {
             CpuResult cur = run_cpu(model, fw, opt.steps, opt.warmup,
-                                    static_cast<int>(r));
+                                    static_cast<int>(r), opt.jit);
             if (cur.steps_per_sec > best.steps_per_sec) best = cur;
         }
 

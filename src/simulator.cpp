@@ -336,10 +336,30 @@ void Simulator::advance_clock(VirtTime delta) {
 void Simulator::cpu_loop() {
     MCUS_INFO("cpu loop enter");
     uint32_t poll = 0;
+    const uint32_t jit_chunk =
+        std::max<uint32_t>(1, cfg_.simulator.control_poll_interval);
+
+    auto jit_tick = [](void* user) -> bool {
+        auto* self = static_cast<Simulator*>(user);
+        const VirtTime now = self->cpu_.now();
+        if (now > self->last_jit_now_) {
+            const VirtTime delta = now - self->last_jit_now_;
+            self->last_jit_now_ = now;
+            self->acc_clock_ += delta;
+            while (self->acc_clock_ >= self->clock_step_interval_) {
+                self->advance_clock(self->clock_step_interval_);
+                self->acc_clock_ -= self->clock_step_interval_;
+            }
+        }
+        self->virtual_time_ = now;
+        self->shm_.control()->virtual_time.store(now,
+                                                 std::memory_order_relaxed);
+        return self->stop_requested_.load() || self->stream_.full();
+    };
+
     while (!stop_requested_.load()) {
-        //MCUS_INFO("cpu loop tick");
         auto* ctl = shm_.control();
-        if (poll++ % cfg_.simulator.control_poll_interval == 0){
+        if (poll % cfg_.simulator.control_poll_interval == 0) {
             handle_control_commands();
         }
         if (cpu_.paused()) {
@@ -350,6 +370,43 @@ void Simulator::cpu_loop() {
             std::this_thread::yield();
             continue;
         }
+
+        if (cpu_.jit_enabled()) {
+            last_jit_now_ = cpu_.now();
+            const uint64_t done =
+                cpu_.run_jit(jit_chunk, jit_tick, this);
+            if (done > 0) {
+                poll += static_cast<uint32_t>(done);
+                virtual_time_ = cpu_.now();
+                ctl->virtual_time.store(virtual_time_,
+                                        std::memory_order_relaxed);
+                if (cpu_.halted()) {
+                    ctl->status.store(
+                        static_cast<uint32_t>(ControlStatus::Halted));
+                    if (!cfg_.simulator.stay_alive) break;
+                }
+                if (cpu_.waiting_for_bus()) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (!bus_waiting_) {
+                        bus_waiting_ = true;
+                        bus_wait_start_ = now;
+                    } else if (bus_wait_timeout_ms_ > 0 &&
+                               std::chrono::duration_cast<
+                                   std::chrono::milliseconds>(
+                                   now - bus_wait_start_).count() >=
+                                   bus_wait_timeout_ms_) {
+                        MCUS_WARN("bus wait timeout, using default MISO");
+                        cpu_.force_complete_spi();
+                        bus_waiting_ = false;
+                    }
+                } else {
+                    bus_waiting_ = false;
+                }
+                continue;
+            }
+        }
+
+        ++poll;
         VirtTime dt = cpu_.step();
         if (dt == 0) {
             if (cpu_.halted()) {

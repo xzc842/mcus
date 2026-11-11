@@ -30,6 +30,9 @@ stream_capacity = 4096
 # 启动后是否立即暂停，等待外部程序就绪
 start_paused = false
 
+# 可选：JIT Translator 插件路径（当前支持 8051）
+# jit = "./build/libmcus_jit_8051.so"
+
 # 控制区命令轮询间隔（虚拟时间片数），仅用于降低 CPU 空转
 control_poll_interval = 64
 
@@ -70,6 +73,7 @@ dump_prefix = "/tmp/mcus_dump"
 | `stream_name` | string | `/mcus_stream` | 事件流名，POSIX `shm_open`，需以 `/` 开头 |
 | `stream_capacity` | int | `4096` | out/in 每个环的容量（条数）。out 满时 `cpu_loop` `yield`，背压暂停 CPU；in 满时 `push_in` 返回 false |
 | `start_paused` | bool | `false` | 启动后是否立即暂停，`true` 时 `status=Paused`，等外部程序 `Resume` |
+| `jit` | string | `""` | 可选：8051 JIT Translator 插件路径；命令行 `--jit` 优先 |
 | `control_poll_interval` | int | `64` | 每 N 步 `handle_control_commands`，降低 CPU 空转 |
 | `clock_step_interval` | int | `100` | 每 N 步 `advance_clock`，见下文 |
 | `bus_wait_timeout_ms` | int | `1000` | 外部程序 attach 后，SPI 等同步总线等待响应的真实时间上限；0=无限等待 |

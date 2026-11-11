@@ -617,7 +617,8 @@ public:
 
             case 0xA2: {
                 uint8_t bit_addr = fetch(bus, pc + 1);
-                write_cy(bus, read_cy(bus) && !bit_read(bus, bit_addr));
+                // MOV C,bit（ANL C,/bit 是 0xB0）
+                write_cy(bus, bit_read(bus, bit_addr));
                 pc += 2;
                 break;
             }

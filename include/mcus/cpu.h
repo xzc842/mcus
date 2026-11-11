@@ -21,6 +21,7 @@
 #include "shared_memory.h"
 #include "event_stream.h"
 #include "instruction.h"
+#include "jit.h"
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -32,7 +33,24 @@ namespace mcus {
 class Cpu : public MemoryBus {
 public:
     Cpu(const Model& model, SharedMemory& shm, EventStream& stream);
+    ~Cpu();
     VirtTime step();
+
+    // 加载 JIT 插件；失败返回 false，之后继续用解释器。
+    bool enable_jit(const std::string& plugin_path);
+    bool jit_enabled() const { return jit_ && jit_->loaded(); }
+    // 连续执行最多 max_steps 条指令；返回实际执行数。
+    // 只用于当前 PC 已被 Translator 支持的快速路径，否则返回 0。
+    // yield 在每条指令的 Check 之后调用；返回 true 表示让出控制权。
+    using JitYieldFn = bool (*)(void*);
+    uint64_t run_jit(uint64_t max_steps, JitYieldFn yield = nullptr,
+                     void* yield_user = nullptr);
+    // JIT 每指令 Check 回调：执行现有完整检查，返回 false 表示退出 JIT。
+    bool run_full_checks();
+    void sync_jit_regs(const CpuRegisters& regs) { regs_ = regs; }
+    void sync_jit_pc(uint32_t pc) { regs_.pc = pc; }
+    // 供 JIT 的 CallIsa 回退执行一条解释器指令，返回消耗的虚拟周期。
+    VirtTime execute_isa_one();
     bool halted() const { return halted_.load(std::memory_order_relaxed); }
     bool paused() const { return paused_.load(std::memory_order_relaxed); }
     void set_paused(bool p) { paused_.store(p, std::memory_order_relaxed); }
@@ -278,6 +296,10 @@ private:
     uint32_t periph_active_ = 0; // 1=UART TX, 2=SPI, 4=PWM, 8=ADC, 16=TKEY, 128=GPIO WAVE, 256=PULSE IN
 
     uint32_t last_bp_pc_ = 0xFFFFFFFF;
+
+    std::unique_ptr<JitEngine> jit_;
+    std::unordered_map<Addr, std::unique_ptr<NativeProgram>> jit_cache_;
+    std::unordered_map<Addr, uint32_t> jit_hits_;
 };
 
 } // namespace mcus

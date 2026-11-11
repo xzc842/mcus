@@ -107,7 +107,8 @@ target_link_libraries(test_simulator_timer PRIVATE mcus_core)
 target_compile_definitions(test_simulator_timer PRIVATE
     MCUS_TEST_STC90C51_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stc90c51.json"
     MCUS_BIN_PATH="$<TARGET_FILE:mcus>"
-    MCUS_ISA_PATH="$<TARGET_FILE:mcus_isa_8051>")
+    MCUS_ISA_PATH="$<TARGET_FILE:mcus_isa_8051>"
+    MCUS_JIT_PATH="$<TARGET_FILE:mcus_jit_8051>")
 add_test(NAME simulator_timer COMMAND test_simulator_timer)
 add_test(NAME simulator_timer_batch COMMAND test_simulator_timer 64)
 add_test(NAME simulator_timer1 COMMAND test_simulator_timer 1 1)
@@ -133,3 +134,49 @@ target_compile_definitions(test_timer_engine_arm PRIVATE
     MCUS_TEST_ARM
     MCUS_TEST_ARM_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stm32f103c8t6.json")
 add_test(NAME timer_engine_arm COMMAND test_timer_engine_arm)
+
+add_executable(test_jit test_jit.cpp)
+target_link_libraries(test_jit PRIVATE mcus_jit)
+target_compile_definitions(test_jit PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json"
+    MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
+add_dependencies(test_jit mcus_jit_8051)
+add_test(NAME jit COMMAND test_jit)
+
+add_executable(test_jit_diff test_jit_diff.cpp)
+target_link_libraries(test_jit_diff PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_jit_diff PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json"
+    MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
+add_dependencies(test_jit_diff mcus_jit_8051)
+add_test(NAME jit_diff COMMAND test_jit_diff)
+
+add_test(NAME simulator_timer_jit
+         COMMAND test_simulator_timer 64 0 ${CMAKE_BINARY_DIR}/libmcus_jit_8051.so)
+add_test(NAME simulator_timer_jit_exact
+         COMMAND test_simulator_timer 1 0 ${CMAKE_BINARY_DIR}/libmcus_jit_8051.so)
+add_dependencies(test_simulator_timer mcus_jit_8051)
+
+add_executable(test_jit_timing test_jit_timing.cpp)
+target_link_libraries(test_jit_timing PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_jit_timing PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json"
+    MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
+add_dependencies(test_jit_timing mcus_jit_8051)
+add_test(NAME jit_timing COMMAND test_jit_timing)
+
+add_executable(test_jit_event_timing test_jit_event_timing.cpp)
+target_link_libraries(test_jit_event_timing PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_jit_event_timing PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json"
+    MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
+add_dependencies(test_jit_event_timing mcus_jit_8051)
+add_test(NAME jit_event_timing COMMAND test_jit_event_timing)
+
+add_executable(test_jit_peripherals_timing test_jit_peripherals_timing.cpp)
+target_link_libraries(test_jit_peripherals_timing PRIVATE mcus_core mcus_isa_8051)
+target_compile_definitions(test_jit_peripherals_timing PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json"
+    MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
+add_dependencies(test_jit_peripherals_timing mcus_jit_8051)
+add_test(NAME jit_peripherals_timing COMMAND test_jit_peripherals_timing)

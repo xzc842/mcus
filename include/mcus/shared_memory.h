@@ -131,6 +131,11 @@ public:
     }
     void reset_all();
 
+    // MMIO 寄存器区的直接基址（供 JIT 快速路径使用）。
+    uint8_t* mmio_base() {
+        return static_cast<uint8_t*>(base_) + mmio_offset_;
+    }
+
     uint8_t* dump_buffer();
     size_t dump_buffer_size() const;
     size_t export_mmio(const SpaceId& space, Addr addr, size_t len,

@@ -27,6 +27,7 @@ struct SimulatorSection {
     size_t stream_capacity = 4096;
     bool start_paused = false;
     bool stay_alive = false;
+    std::string jit;  // 可选：8051 JIT Translator 插件路径
     uint32_t control_poll_interval = 64;
     uint32_t clock_step_interval = 100;
     // 同步总线等待外部响应的真实时间上限；0=无限等待。

@@ -35,6 +35,7 @@ struct Options {
     std::string model;
     std::string firmware;
     std::string config;
+    std::string jit;
 };
 
 void usage(const char* argv0) {
@@ -45,7 +46,8 @@ void usage(const char* argv0) {
         << "  --isa, -i       架构指令集动态库（如 libmcus_isa_<arch>.so）\n"
         << "  --model, -m     芯片模型文件（JSON）\n"
         << "  --firmware, -f  固件文件（.bin 或 .hex/.ihx）\n"
-        << "  --config, -c    配置文件（TOML）\n";
+        << "  --config, -c    配置文件（TOML）\n"
+        << "  --jit <so>      可选：JIT Translator 插件（当前 8051）\n";
 }
 
 std::string require_value(int argc, char** argv, int& i,
@@ -71,6 +73,8 @@ Options parse_args(int argc, char** argv) {
             opts.firmware = require_value(argc, argv, i, arg);
         } else if (arg == "-c" || arg == "--config") {
             opts.config = require_value(argc, argv, i, arg);
+        } else if (arg == "--jit") {
+            opts.jit = require_value(argc, argv, i, arg);
         } else {
             throw std::runtime_error("未知参数: " + arg);
         }
@@ -166,6 +170,13 @@ int main(int argc, char** argv) {
                   std::to_string(firmware.data.size()) + " bytes)");
 
         mcus::Simulator sim(std::move(model), std::move(firmware), cfg);
+        const std::string jit_path =
+            !opts.jit.empty() ? opts.jit : cfg.simulator.jit;
+        if (!jit_path.empty()) {
+            if (!sim.enable_jit(jit_path))
+                throw std::runtime_error("无法加载 JIT 插件: " + jit_path);
+            MCUS_INFO("JIT enabled: " + jit_path);
+        }
         sim.run();
 
         (void)isa_handle;

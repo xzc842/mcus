@@ -48,6 +48,8 @@ int main(int argc, char** argv) {
     int argi = 1;
     if (argi < argc) clock_interval = static_cast<uint32_t>(std::strtoul(argv[argi++], nullptr, 10));
     if (argi < argc) timer = std::atoi(argv[argi++]);
+    std::string jit_path;
+    if (argi < argc) jit_path = argv[argi++];
     const TimerSpec specs[3] = {
         {"Timer0", 0x01, 0x8C, 0x8A, 0x8C},
         {"Timer1", 0x10, 0x8D, 0x8B, 0x8E},
@@ -97,11 +99,20 @@ int main(int argc, char** argv) {
 
     pid_t pid = ::fork();
     if (pid == 0) {
-        ::execl(MCUS_BIN_PATH, MCUS_BIN_PATH,
-                "--isa", MCUS_ISA_PATH,
-                "--model", MCUS_TEST_STC90C51_MODEL_PATH,
-                "--firmware", bin.c_str(),
-                "--config", cfg.c_str(), nullptr);
+        if (jit_path.empty()) {
+            ::execl(MCUS_BIN_PATH, MCUS_BIN_PATH,
+                    "--isa", MCUS_ISA_PATH,
+                    "--model", MCUS_TEST_STC90C51_MODEL_PATH,
+                    "--firmware", bin.c_str(),
+                    "--config", cfg.c_str(), nullptr);
+        } else {
+            ::execl(MCUS_BIN_PATH, MCUS_BIN_PATH,
+                    "--isa", MCUS_ISA_PATH,
+                    "--model", MCUS_TEST_STC90C51_MODEL_PATH,
+                    "--firmware", bin.c_str(),
+                    "--config", cfg.c_str(),
+                    "--jit", jit_path.c_str(), nullptr);
+        }
         ::_exit(127);
     }
     assert(pid > 0);

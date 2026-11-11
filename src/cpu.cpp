@@ -938,11 +938,13 @@ bool Cpu::check_interrupt() {
     const size_t bitmap_size = irq_bitmap_size_;
     const InterruptDesc* best = nullptr;
 
+#pragma GCC unroll 8
     for (const auto& group : irq_groups_) {
         const uint32_t enable =
             shm_.read_reg_at(group.enable_off, group.enable_width);
         if (enable == 0) continue;
 
+#pragma GCC unroll 8
         for (const IrqRuntime* rtp : group.irqs) {
             const IrqRuntime& rt = *rtp;
             if (!(enable & rt.enable_mask)) continue;
@@ -1118,6 +1120,7 @@ void Cpu::complete_spi(size_t index) {
 
 bool Cpu::waiting_for_bus() const {
     if (!stream_.host_attached()) return false;
+#pragma GCC unroll 8
     for (const auto& rt : spi_rt_)
         if (rt.busy && !rt.responded) return true;
     return false;
@@ -1192,6 +1195,7 @@ void Cpu::advance_peripherals(VirtTime delta) {
     service_pulses();
     if (periph_active_ == 0) return;
 
+#pragma GCC unroll 4
     for (size_t i = 0; i < uart_rt_.size(); ++i) {
         UartRuntime& rt = uart_rt_[i];
         if (!rt.tx_pending || now_ < rt.tx_ready) continue;
@@ -1498,6 +1502,7 @@ void Cpu::poll_external_pins() {
     }
 
     const bool slow = (pin_slow_counter_++ & 0x3Fu) == 0;
+#pragma GCC unroll 32
     for (size_t i = 0; i < pin_count; ++i) {
         const uint32_t current =
             pins[i].value.load(std::memory_order_relaxed);
@@ -1894,6 +1899,249 @@ VirtTime Cpu::step() {
         ctl_->status.store(static_cast<uint32_t>(ControlStatus::Halted));
     }
     return r.cycles == 0 ? model_.cycles_per_instruction : r.cycles;
+}
+
+Cpu::~Cpu() {
+    if (jit_) {
+        for (auto& kv : jit_cache_)
+            if (kv.second) jit_->release(*kv.second);
+    }
+}
+
+bool Cpu::enable_jit(const std::string& plugin_path) {
+    auto engine = std::make_unique<JitEngine>();
+    if (!engine->load_plugin(plugin_path, model_.arch)) return false;
+    jit_ = std::move(engine);
+    jit_cache_.clear();
+    jit_hits_.clear();
+    return true;
+}
+
+bool Cpu::run_full_checks() {
+    if (halted_.load(std::memory_order_relaxed)) return false;
+    if (paused_.load(std::memory_order_relaxed)) return false;
+
+    // 外部控制：reset pin 只有一个原子读，直接内联。
+    if (ctl_->reset_pin.load(std::memory_order_relaxed) != 0) {
+        MCUS_INFO("reset pin asserted");
+        reset();
+        ctl_->reset_pin.store(0, std::memory_order_relaxed);
+        return false;
+    }
+
+    // 事件流为空时跳过整个 pop 循环。
+    if (stream_.host_attached() && !stream_.in_empty()) poll_bus_in();
+
+    poll_external_pins();
+    if ((periph_active_ & 2u) && waiting_for_bus()) return false;
+
+    auto* ih = inject_header_;
+    if (ih->head.load(std::memory_order_relaxed) !=
+        ih->tail.load(std::memory_order_relaxed))
+        check_inject_slots();
+
+    auto* bh = breakpoint_header_;
+    if (bh->hit.load(std::memory_order_relaxed) != 0 ||
+        bh->count.load(std::memory_order_relaxed) != 0) {
+        if (check_breakpoint()) return false;
+    }
+
+    if (check_interrupt()) return false;
+    return true;
+}
+
+VirtTime Cpu::execute_isa_one() {
+    ExecResult r = isa_->execute(regs_, *this);
+    if (last_reported_pc_ != regs_.pc) {
+        ctl_->pc.store(regs_.pc, std::memory_order_relaxed);
+        last_reported_pc_ = regs_.pc;
+    }
+    if (r.halted) {
+        halted_.store(true);
+        ctl_->halted.store(1);
+        ctl_->status.store(static_cast<uint32_t>(ControlStatus::Halted));
+    }
+    return r.cycles == 0 ? model_.cycles_per_instruction : r.cycles;
+}
+
+uint64_t Cpu::run_jit(uint64_t max_steps, JitYieldFn yield,
+                      void* yield_user) {
+    if (!jit_ || !jit_->loaded() || max_steps == 0) return 0;
+
+    const SpaceId& code_space = model_.arch_desc.reset_space.empty()
+                                    ? SpaceId("code")
+                                    : model_.arch_desc.reset_space;
+    auto block_it = memory_.find(code_space);
+    if (block_it == memory_.end()) return 0;
+    const MemBlock& block = block_it->second;
+
+    struct RunState {
+        Cpu* cpu;
+        JitContext* ctx;
+        const Model* model;
+        uint64_t steps;
+        uint64_t max_steps;
+        bool aborted;
+        JitYieldFn yield;
+        void* yield_user;
+    };
+
+    auto space_index = [&](const char* name) -> uint8_t {
+        const int idx = model_.space_index(name);
+        return idx < 0 ? 0 : static_cast<uint8_t>(idx);
+    };
+    const uint8_t code_idx = space_index(model_.arch_desc.reset_space.c_str());
+    const uint8_t iram_idx = space_index("iram");
+    const uint8_t sfr_idx = space_index("sfr");
+    const uint8_t xram_idx = space_index("xram");
+
+    auto set_mem = [&](const char* name, uint8_t*& data, int32_t& bias) {
+        auto it = memory_.find(name);
+        if (it == memory_.end()) return;
+        data = it->second.data.data();
+        bias = -static_cast<int32_t>(it->second.base);
+    };
+    uint8_t* iram_data = nullptr;
+    uint8_t* xram_data = nullptr;
+    int32_t iram_bias = 0, xram_bias = 0;
+    set_mem("iram", iram_data, iram_bias);
+    set_mem("xram", xram_data, xram_bias);
+    uint8_t* acc_ptr = nullptr;
+    uint8_t* psw_ptr = nullptr;
+    uint8_t* sfr_mmio = shm_.mmio_base();
+    int32_t sfr_offsets[256];
+    for (int i = 0; i < 256; ++i) sfr_offsets[i] = -1;
+    for (const auto& reg : model_.registers) {
+        if (reg.space != "sfr" || reg.addr > 0xFF) continue;
+        const size_t off = shm_.reg_offset("sfr", reg.addr);
+        if (off != SIZE_MAX)
+            sfr_offsets[reg.addr] = static_cast<int32_t>(off);
+    }
+    const size_t acc_off = shm_.reg_offset("sfr", 0xE0);
+    const size_t psw_off = shm_.reg_offset("sfr", 0xD0);
+    if (acc_off != SIZE_MAX && psw_off != SIZE_MAX) {
+        acc_ptr = shm_.mmio_base() + acc_off;
+        psw_ptr = shm_.mmio_base() + psw_off;
+    }
+
+    uint64_t total = 0;
+    while (total < max_steps && !halted_.load(std::memory_order_relaxed) &&
+           !paused_.load(std::memory_order_relaxed)) {
+        // 冷代码先走解释器；同一 PC 再次执行才值得编译，避免一次性路径
+        // 为每条指令生成 stub 的编译/磁盘开销。
+        uint32_t& hits = jit_hits_[regs_.pc];
+        if (hits == 0) {
+            ++hits;
+            const VirtTime dt = step();
+            if (dt == 0) break;
+            advance_peripherals(dt);
+            ++total;
+            continue;
+        }
+        // 进入 native 块前，在当前 PC 做一次边界检查；之后每条指令的
+        // Check 都会在“推进外设之后”执行。
+        if (!run_full_checks()) break;
+        auto it = jit_cache_.find(regs_.pc);
+        if (it == jit_cache_.end()) {
+            JitCodeSource src{block.data.data(), block.data.size(), block.base};
+            BcProgram program;
+            if (!jit_->translate(model_, src, regs_.pc, program)) break;
+            auto native = std::make_unique<NativeProgram>();
+            if (!jit_->compile(program, *native)) break;
+            it = jit_cache_.emplace(regs_.pc, std::move(native)).first;
+        }
+
+        JitContext ctx;
+        ctx.regs = regs_;
+        ctx.now = now_;
+        ctx.max_steps = max_steps - total;
+        ctx.code_space = code_idx;
+        ctx.iram_space = iram_idx;
+        ctx.sfr_space = sfr_idx;
+        ctx.xram_space = xram_idx;
+        ctx.helper = jit_->helper();
+        ctx.iram_data = iram_data;
+        ctx.iram_bias = iram_bias;
+        ctx.acc_ptr = acc_ptr;
+        ctx.psw_ptr = psw_ptr;
+        ctx.sfr_mmio = sfr_mmio;
+        std::memcpy(ctx.sfr_offsets, sfr_offsets, sizeof(sfr_offsets));
+        ctx.xram_data = xram_data;
+        ctx.xram_bias = xram_bias;
+
+        RunState state{this, &ctx, &model_, 0, max_steps - total, false,
+                       yield, yield_user};
+        ctx.user = &state;
+
+        ctx.read = [](void* user, uint8_t space, Addr addr,
+                      uint8_t width) -> uint32_t {
+            auto* st = static_cast<RunState*>(user);
+            if (space >= st->model->space_order.size()) return 0;
+            const SpaceId& sp = st->model->space_order[space];
+            switch (width) {
+                case 8: return st->cpu->read8(sp, addr);
+                case 16: return st->cpu->read16(sp, addr);
+                default: return st->cpu->read32(sp, addr);
+            }
+        };
+        ctx.write = [](void* user, uint8_t space, Addr addr, uint32_t value,
+                       uint8_t width) {
+            auto* st = static_cast<RunState*>(user);
+            if (space >= st->model->space_order.size()) return;
+            const SpaceId& sp = st->model->space_order[space];
+            switch (width) {
+                case 8: st->cpu->write8(sp, addr, static_cast<uint8_t>(value)); break;
+                case 16: st->cpu->write16(sp, addr, static_cast<uint16_t>(value)); break;
+                default: st->cpu->write32(sp, addr, value); break;
+            }
+        };
+        ctx.reti = [](void* user) {
+            auto* st = static_cast<RunState*>(user);
+            st->cpu->on_reti();
+        };
+        ctx.call_isa = [](void* user, uint32_t) -> bool {
+            auto* st = static_cast<RunState*>(user);
+            st->cpu->sync_jit_regs(st->ctx->regs);
+            const VirtTime cycles = st->cpu->execute_isa_one();
+            st->ctx->regs = st->cpu->regs();
+            st->ctx->now += cycles;
+            return true;
+        };
+        ctx.check = [](void* user, uint32_t) -> uint32_t {
+            auto* st = static_cast<RunState*>(user);
+            ++st->steps;
+            // 与 Simulator::cpu_loop 的顺序保持一致：
+            // 指令执行后先推进虚拟时间/外设，再检查中断/断点/引脚。
+            const VirtTime target = st->ctx->now;
+            const VirtTime cur = st->cpu->now();
+            if (target > cur) st->cpu->advance_peripherals(target - cur);
+            // 8051 的中断上下文只需 PC；ARM 需要完整寄存器。
+            if (st->model->arch == "8051")
+                st->cpu->sync_jit_pc(st->ctx->regs.pc);
+            else
+                st->cpu->sync_jit_regs(st->ctx->regs);
+            // 先让 Simulator 更新虚拟时间/时钟/背压，再执行 CPU 检查；
+            // 这样即使检查导致中断/暂停，虚拟时间也已经提交。
+            if (st->yield && st->yield(st->yield_user)) return 1;
+            if (!st->cpu->run_full_checks()) {
+                st->aborted = true;
+                return 1;
+            }
+            if (st->max_steps && st->steps >= st->max_steps) return 1;
+            return 0;
+        };
+
+        jit_->execute_native(*it->second, ctx);
+        if (!state.aborted) {
+            regs_ = ctx.regs;
+            if (ctx.now > now_) now_ = ctx.now;
+        }
+        ctl_->pc.store(regs_.pc, std::memory_order_relaxed);
+        last_reported_pc_ = regs_.pc;
+        total += state.steps;
+        if (state.steps == 0) break;
+    }
+    return total;
 }
 
 } // namespace mcus
