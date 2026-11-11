@@ -1096,7 +1096,8 @@
         "bit": 5
       },
       "irq": 1,
-      "overflow_action": "isa"
+      "overflow_action": "isa",
+      "prescaler": 12
     },
     {
       "name": "TIMER1",
@@ -1117,7 +1118,8 @@
         "bit": 7
       },
       "irq": 3,
-      "overflow_action": "isa"
+      "overflow_action": "isa",
+      "prescaler": 12
     },
     {
       "name": "TIMER2",
@@ -1138,7 +1140,8 @@
         "bit": 7
       },
       "irq": 5,
-      "overflow_action": "reload"
+      "overflow_action": "reload",
+      "prescaler": 12
     }
   ],
   "uarts": [
