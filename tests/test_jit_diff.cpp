@@ -167,6 +167,33 @@ int main() {
                0x32}, 4) != 0)
         return 1;
 
+    // LCALL/RET: 调用 0x0010 处的 RET，返回后写 0x30。
+    {
+        std::vector<uint8_t> fw(0x20, 0x00);
+        fw[0] = 0x12; fw[1] = 0x00; fw[2] = 0x10;
+        fw[3] = 0x75; fw[4] = 0x30; fw[5] = 0xAA;
+        fw[6] = 0x80; fw[7] = 0xFE;
+        fw[0x10] = 0x22;
+        if (check(model, "lcall", fw, 4) != 0) return 1;
+    }
+
+    // LCALL/RET loop: 反复调用 0x10 的 RET，确保 JIT 真正执行 LCALL。
+    {
+        std::vector<uint8_t> fw(0x20, 0x00);
+        fw[0] = 0x12; fw[1] = 0x00; fw[2] = 0x10;
+        fw[3] = 0x80; fw[4] = 0xFB; // SJMP 0
+        fw[0x10] = 0x22;
+        if (check(model, "lcall_loop", fw, 12) != 0) return 1;
+    }
+
+    // CJNE Rn,#imm,rel：R4 从 0xFC 加到 0xFF，前两次跳回，最后一次落空。
+    // 7C FC: MOV R4,#0xFC; 0C: INC R4; BC FF FC: CJNE R4,#0xFF,loop;
+    // EC: MOV A,R4; F5 30: MOV 0x30,A; 80 FE: SJMP $
+    if (check(model, "cjne_rn_imm",
+              {0x7C, 0xFC, 0x0C, 0xBC, 0xFF, 0xFC,
+               0xEC, 0xF5, 0x30, 0x80, 0xFE}, 9) != 0)
+        return 1;
+
     // ANL/ORL/XRL A,#imm
     if (check(model, "logic",
               {0x74, 0xF0, 0x54, 0x0F, 0x44, 0xAA, 0x64, 0xFF,

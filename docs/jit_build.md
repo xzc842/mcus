@@ -294,6 +294,51 @@ JIT 插件是旧版本（ABI 1 或更早）。更新 `src/isa_jit_8051.cpp` 后�
 插件 `mcus_jit_arch()` 返回的架构与模型 `arch` 不一致。8051 模型需要
 `libmcus_jit_8051.so`。
 
+### 命中缓存后卡在 `pc=126` / `virtual_time=0`
+
+旧版本 `JitEngine::translate()` 在命中 `.mbc` 字节码缓存后直接返回，没有创建
+translator，导致 `JitContext.helper` 为空；native `CallHelper` 会跳到 `nullptr`，
+表现为调试会话卡住或 `SIGSEGV`。
+
+已修复为：**即使命中字节码缓存，也先创建 translator**。临时规避：
+
+```bash
+MCUS_JIT_NO_CACHE=1 hpm debug --jit ...
+```
+
+或删除缓存目录：
+
+```bash
+rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/mcus/jit"
+```
+
+长期修复需要更新 core 并重新构建（本仓库已包含该修复和 `jit_cache_helpers` 回归测试）。
+
+### JIT 下设备只动一点后停住
+
+旧版 `ACALL/LCALL` 的返回地址只传了低 8 位，且压栈顺序与 ISA 相反。短调用可能看不出来，
+但调用地址/返回地址超过 0xFF 后 RET 会跳到错误 PC，表现为设备走到某个角度后停住。
+
+已改为把 `target` 和 `return` 打包进 32 位 helper 参数，并按 8051 语义先压 PC 低字节、
+再压高字节。字节码版本升到 3，native cache 升到 7。
+
+回归场景：
+
+```bash
+ctest --test-dir build --output-on-failure -R jit_diff
+```
+
+### JIT 下 GPIO/设备状态不更新
+
+旧版 8051 translator 把 `0xB8..0xBF` 错当成 `CJNE A,Rn,rel`，实际这些 opcode 是
+`CJNE Rn,#imm,rel`。控制流和 CY 会因此走错，表现为 CPU 在跑但设备状态/GPIO 不更新。
+
+已修复并加入 `test_jit_diff` 的 `cjne_rn_imm` 场景。更新 core 和 JIT 插件后重测：
+
+```bash
+ctest --test-dir build --output-on-failure -R jit_diff
+```
+
 ### 插件加载后 CPU 不推进
 
 先确认：

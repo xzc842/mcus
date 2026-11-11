@@ -114,6 +114,7 @@ enum HelperId : uint32_t {
     H_Reti = 86,
     H_MovRnImm = 87,
     H_JmpADptr = 88,
+    H_CjneRnImm = 89,
 };
 
 // operand mode 编码在 helper 参数低 8 位，操作数在高 24 位。
@@ -425,11 +426,15 @@ uint32_t helper_dispatch(JitContext* c, uint32_t id, uint32_t a, uint32_t b) {
             }
             break;
         case H_Acall:
-        case H_Lcall:
-            push8(c, (b >> 8) & 0xFFu);
-            push8(c, b & 0xFFu);
-            c->regs.pc = a;
+        case H_Lcall: {
+            // a = target(16) | return(16) << 16
+            const uint32_t target = a & 0xFFFFu;
+            const uint32_t ret = (a >> 16) & 0xFFFFu;
+            push8(c, ret & 0xFFu);
+            push8(c, (ret >> 8) & 0xFFu);
+            c->regs.pc = target;
             break;
+        }
         case H_Ret:
         case H_Reti: {
             const uint32_t hi = pop8(c);
@@ -502,6 +507,15 @@ uint32_t helper_dispatch(JitContext* c, uint32_t id, uint32_t a, uint32_t b) {
             const uint32_t acc = read_acc(c);
             write_cy(c, acc < v);
             c->regs.pc = acc != v ? a : (c->regs.pc + 3);
+            break;
+        }
+        case H_CjneRnImm: {
+            // a = target | (imm << 16), b = Rn
+            const uint32_t target = a & 0xFFFFu;
+            const uint32_t imm = (a >> 16) & 0xFFu;
+            const uint32_t v = reg_read(c, b);
+            write_cy(c, v < imm);
+            c->regs.pc = v != imm ? target : (c->regs.pc + 3);
             break;
         }
         case H_DjnzDirect: {
@@ -822,8 +836,7 @@ public:
                         ((pc + 2) & 0xF800u) |
                         (static_cast<uint32_t>(op & 0xE0u) << 3) | lo);
                     helper_id = H_Acall;
-                    arg0 = target;
-                    arg1 = pc + 2;
+                    arg0 = target | (static_cast<uint32_t>(pc + 2) << 16);
                     next = pc + 2;
                     branch = true;
                     dynamic_branch = true;
@@ -835,8 +848,7 @@ public:
                 else {
                     target = (static_cast<Addr>(hi) << 8) | lo;
                     helper_id = H_Lcall;
-                    arg0 = target;
-                    arg1 = pc + 3;
+                    arg0 = target | (static_cast<uint32_t>(pc + 3) << 16);
                     next = pc + 3;
                     branch = true;
                     dynamic_branch = true;
@@ -958,15 +970,17 @@ public:
                     branch = true;
                     dynamic_branch = true;
                 }
-            } else if (op >= 0xB8 && op <= 0xBF) { // CJNE A,Rn,rel
-                uint8_t rel = 0;
-                if (!code.fetch8(pc + 2, rel)) supported = false;
+            } else if (op >= 0xB8 && op <= 0xBF) { // CJNE Rn,#imm,rel
+                uint8_t imm = 0, rel = 0;
+                if (!code.fetch8(pc + 1, imm) ||
+                    !code.fetch8(pc + 2, rel)) supported = false;
                 else {
-                    helper_id = H_CjneARn;
+                    helper_id = H_CjneRnImm;
                     target = static_cast<Addr>(
                         static_cast<uint16_t>(pc + 3) +
                         static_cast<int8_t>(rel));
-                    arg0 = target;
+                    // target 占低 16 位，立即数放高 8 位；b 存 Rn。
+                    arg0 = target | (static_cast<uint32_t>(imm) << 16);
                     arg1 = op & 7;
                     next = pc + 3;
                     branch = true;

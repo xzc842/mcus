@@ -30,7 +30,7 @@
 
 namespace mcus {
 
-inline constexpr uint32_t kBytecodeVersion = 1;
+inline constexpr uint32_t kBytecodeVersion = 3;
 
 // 字节码操作码。数值一经发布不要改动，新增用新值。
 enum class BcOp : uint16_t {

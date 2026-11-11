@@ -243,12 +243,14 @@ void JitEngine::unload() {
 bool JitEngine::translate(const Model& model, const JitCodeSource& code, Addr pc,
                           BcProgram& out) const {
     if (!handle_ || !create_) return false;
-    const uint64_t hash = hash_source(model, code, pc);
-    const std::string cached = bc_path(hash);
-    if (load_bc(cached, out)) return true;
+    // 即使命中字节码缓存，也必须创建 translator，否则 helper() 为空，
+    // native CallHelper 会跳到 nullptr。
     auto* self = const_cast<JitEngine*>(this);
     if (!self->translator_) self->translator_ = create_(&model);
     if (!self->translator_) return false;
+    const uint64_t hash = hash_source(model, code, pc);
+    const std::string cached = bc_path(hash);
+    if (load_bc(cached, out)) return true;
     out = BcProgram{};
     out.arch = model.arch;
     if (!self->translator_->translate(model, code, pc, out) || !out.valid)

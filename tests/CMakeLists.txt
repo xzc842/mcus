@@ -180,3 +180,11 @@ target_compile_definitions(test_jit_peripherals_timing PRIVATE
     MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
 add_dependencies(test_jit_peripherals_timing mcus_jit_8051)
 add_test(NAME jit_peripherals_timing COMMAND test_jit_peripherals_timing)
+
+add_executable(test_jit_cache_helpers test_jit_cache_helpers.cpp)
+target_link_libraries(test_jit_cache_helpers PRIVATE mcus_jit)
+target_compile_definitions(test_jit_cache_helpers PRIVATE
+    MCUS_TEST_CH552G_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/ch552g.json"
+    MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
+add_dependencies(test_jit_cache_helpers mcus_jit_8051)
+add_test(NAME jit_cache_helpers COMMAND test_jit_cache_helpers)
