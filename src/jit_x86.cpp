@@ -162,13 +162,13 @@ struct Emitter {
 
 struct CacheHeader {
     char magic[4] = {'M', 'J', 'X', '1'};
-    uint32_t abi = 4;
+    uint32_t abi = 5;
     uint32_t size = 0;
     uint32_t guest_pc = 0;
     uint32_t sum = 0;
 };
 
-constexpr uint32_t kNativeCacheVersion = 4;
+constexpr uint32_t kNativeCacheVersion = 5;
 
 uint64_t hash_program(const BcProgram& p) {
     uint64_t h = 1469598103934665603ull;
@@ -182,6 +182,7 @@ uint64_t hash_program(const BcProgram& p) {
     const uint32_t version = kBytecodeVersion;
     mix(&version, sizeof(version));
     mix(&kNativeCacheVersion, sizeof(kNativeCacheVersion));
+    mix(&kJitContextLayoutHash, sizeof(kJitContextLayoutHash));
     mix(&p.guest_pc, sizeof(p.guest_pc));
     mix(p.code.data(), p.code.size() * sizeof(BcInsn));
     return h;
@@ -225,7 +226,7 @@ bool load_cache(const std::string& path, NativeProgram& out) {
     CacheHeader h{};
     f.read(reinterpret_cast<char*>(&h), sizeof(h));
     if (!f || std::memcmp(h.magic, "MJX1", 4) != 0 ||
-        h.abi != 4 || h.size == 0 || h.size > (1u << 20))
+        h.abi != 5 || h.size == 0 || h.size > (1u << 20))
         return false;
     std::vector<uint8_t> code(h.size);
     f.read(reinterpret_cast<char*>(code.data()), h.size);

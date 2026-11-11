@@ -7,7 +7,7 @@
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
 - **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器/外设结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
 - **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 和 `ARM Cortex-M3` 是外部库；单独构建 ISA 见 [docs/isa_build.md](docs/isa_build.md)。
-- **JIT 可选**：8051 可额外加载 `libmcus_jit_8051.so`，把 guest 指令翻译成宿主机器码；每条指令仍执行完整检查，冷代码和未覆盖 opcode 自动回退解释器。`mcus` 和 `mcus_bench` 都支持 `--jit`。
+- **JIT 可选**：8051 可额外加载 `libmcus_jit_8051.so`，把 guest 指令翻译成宿主机器码；每条指令仍执行完整检查，冷代码和未覆盖 opcode 自动回退解释器。`mcus` 和 `mcus_bench` 都支持 `--jit`。JIT 插件可单独编译，见 [docs/jit_build.md](docs/jit_build.md)。
 - **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
 - **统一双向事件流**：MMIO / GPIO / 总线 / 中断 / USB 都进入同一个 `DebugEvent` 共享内存对象，带全局 `seq`，保证顺序；out 环给外部程序消费，in 环把总线响应/UART RX/USB 包送回模拟器；支持 attach 模式，不重置队列。
 - **GPIO 事件化**：引脚只在状态变化时发 PIN 事件，外部程序/插件不轮询引脚；当前值仍可通过 `PinState` 读取。
@@ -157,6 +157,52 @@ ctest --test-dir build --output-on-failure
 - `build/libmcus_jit_8051.so`：8051 JIT Translator 插件（`mcus --jit` / `mcus_bench --jit`）
 - `build/mcus_bench`：性能基准工具
 - `build/libmcus_isa_sdk.a`：ISA SDK 静态库
+
+### 安装
+
+一条命令安装 `mcus`、`libmcus_core.so`、ISA/JIT 插件、ISA SDK 和外部插件编译所需头文件：
+
+```bash
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release -j
+cmake --install build-release --prefix "$HOME/.local"
+```
+
+安装后的布局：
+
+```text
+$PREFIX/bin/mcus
+$PREFIX/bin/mcus_bench
+$PREFIX/bin/dump_shm
+$PREFIX/lib/libmcus_core.so
+$PREFIX/lib/libmcus_isa_8051.so
+$PREFIX/lib/libmcus_isa_arm.so
+$PREFIX/lib/libmcus_jit_8051.so
+$PREFIX/lib/libmcus_isa_sdk.a
+$PREFIX/include/mcus/*.h
+```
+
+`mcus` 的安装 RPATH 是 `$ORIGIN/../lib`，不需要再设置 `LD_LIBRARY_PATH`。
+
+外部编译 ISA/JIT 插件时使用安装后的头文件和 SDK：
+
+```bash
+g++ -std=c++17 -O2 -fPIC -shared \
+    -I"$HOME/.local/include" \
+    src/isa_jit_8051.cpp \
+    "$HOME/.local/lib/libmcus_isa_sdk.a" \
+    -o libmcus_jit_8051.so
+```
+
+如果要安装到其他前缀：
+
+```bash
+cmake --install build-release --prefix /opt/mcus
+```
+
+如果 HPM 使用 `hpm/debug/mcus` 子模块构建 core/host，必须先把该子模块更新到包含
+JIT ABI 2 和 `mcus_jit_layout_hash` 的提交，再重新构建整个 HPM，不能只替换芯片包里的
+`libmcus_jit_8051.so`。具体步骤见 [docs/jit_build.md](docs/jit_build.md)。
 
 ### 运行
 

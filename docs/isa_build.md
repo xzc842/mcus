@@ -96,6 +96,14 @@ build/libmcus_isa_arm.so
 build/libmcus_isa_sdk.a
 ```
 
+需要安装主程序、core、插件、SDK 和外部编译头文件时，一条命令即可：
+
+```bash
+cmake --install build --prefix "$HOME/.local"
+```
+
+安装后 `$PREFIX/include/mcus` 和 `$PREFIX/lib/libmcus_isa_sdk.a` 可直接用于外部 ISA/JIT 编译。
+
 `mcus_isa_sdk` 是 ISA SDK 静态库，包含：
 
 - `src/model.cpp`：模型 JSON 解析/校验；
@@ -234,4 +242,5 @@ cmake --build build --target mcus_isa_8051 mcus_isa_arm -j
 
 - [docs/isa.md](isa.md)：`InstructionSet` 接口、模型钩子、指令实现和测试；
 - [include/mcus/isa_plugin.h](../include/mcus/isa_plugin.h)：ABI 符号和版本；
-- [include/mcus/instruction.h](../include/mcus/instruction.h)：`MemoryBus`、`InstructionSet`、`CpuRegisters`。
+- [include/mcus/instruction.h](../include/mcus/instruction.h)：`MemoryBus`、`InstructionSet`、`CpuRegisters`；
+- [docs/jit_build.md](jit_build.md)：JIT Translator 插件单独编译。

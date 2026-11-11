@@ -20,6 +20,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
+include(GNUInstallDirs)
 
 # 可选：用 FetchContent 拉取 nlohmann/json 和 toml11，避免系统依赖问题
 include(FetchContent)
@@ -96,7 +97,7 @@ add_executable(mcus src/main.cpp)
 target_link_libraries(mcus PRIVATE mcus_core ${CMAKE_DL_LIBS})
 set_target_properties(mcus PROPERTIES
     BUILD_RPATH "$ORIGIN"
-    INSTALL_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
 )
 
 # 调试工具：dump 共享内存
@@ -106,7 +107,21 @@ target_link_libraries(dump_shm PRIVATE mcus_core)
 # 性能基准
 add_executable(mcus_bench tools/bench.cpp)
 target_link_libraries(mcus_bench PRIVATE mcus_core ${CMAKE_DL_LIBS})
+set_target_properties(mcus_bench PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
+)
 add_dependencies(mcus_bench mcus_isa_8051 mcus_isa_arm)
+
+# 安装：mcus、core、ISA/JIT 插件、SDK 和外部插件编译所需头文件
+install(TARGETS mcus mcus_bench dump_shm
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS mcus_core mcus_isa_8051 mcus_isa_arm mcus_jit_8051
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(TARGETS mcus_isa_sdk
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY include/mcus
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 # 测试
 enable_testing()

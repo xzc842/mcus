@@ -22,18 +22,20 @@
 #include "instruction.h"
 #include "model.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 
 namespace mcus {
 
-inline constexpr uint32_t kJitAbiVersion = 1;
+inline constexpr uint32_t kJitAbiVersion = 2;
 
 inline constexpr const char* kJitAbiVersionSymbol = "mcus_jit_abi_version";
 inline constexpr const char* kJitArchSymbol = "mcus_jit_arch";
 inline constexpr const char* kJitCreateSymbol = "mcus_jit_create";
 inline constexpr const char* kJitDestroySymbol = "mcus_jit_destroy";
+inline constexpr const char* kJitLayoutHashSymbol = "mcus_jit_layout_hash";
 
 // guest 代码源。code 指向代码空间基址，pc 是绝对地址。
 struct JitCodeSource {
@@ -120,6 +122,48 @@ struct JitContext {
     JitRetiFn reti = nullptr;
     JitHelperFn helper = nullptr;
 };
+
+// JitContext 布局签名。插件和 core 必须编译自同一份头文件；
+// 任何字段增删/顺序变化都会改变这个值，加载时直接拒绝旧插件。
+constexpr uint32_t jit_layout_mix(uint32_t h, uint32_t v) {
+    h ^= v;
+    h *= 16777619u;
+    return h;
+}
+
+constexpr uint32_t jit_layout_hash() {
+    uint32_t h = 2166136261u;
+    h = jit_layout_mix(h, static_cast<uint32_t>(sizeof(JitContext)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(sizeof(CpuRegisters)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, regs)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(CpuRegisters, pc)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, now)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, steps)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, max_steps)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, halted)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, code_space)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, iram_data)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, iram_bias)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, sfr_data)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, sfr_bias)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, acc_ptr)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, psw_ptr)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, sfr_mmio)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, sfr_offsets)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, xram_data)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, xram_bias)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, user)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, read)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, write)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, check)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, call_isa)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, reti)));
+    h = jit_layout_mix(h, static_cast<uint32_t>(offsetof(JitContext, helper)));
+    return h;
+}
+
+inline constexpr uint32_t kJitContextLayoutHash = jit_layout_hash();
+using JitLayoutHashFn = uint32_t (*)();
 
 // 核心侧 JIT 引擎：加载插件、翻译、执行字节码。
 class JitEngine {

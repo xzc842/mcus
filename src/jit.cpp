@@ -198,14 +198,28 @@ bool JitEngine::load_plugin(const std::string& path, const std::string& arch) {
     auto create = load_symbol<JitCreateFn>(handle, kJitCreateSymbol);
     auto destroy = load_symbol<JitDestroyFn>(handle, kJitDestroySymbol);
 
-    if (abi() != kJitAbiVersion) {
+    const uint32_t abi_v = abi();
+    if (abi_v != kJitAbiVersion) {
         ::dlclose(handle);
-        throw std::runtime_error("JIT ABI mismatch: " + path);
+        throw std::runtime_error("JIT ABI mismatch: " + path +
+                                 " (library=" + std::to_string(abi_v) +
+                                 ", expected=" +
+                                 std::to_string(kJitAbiVersion) + ")");
     }
     if (arch != plugin_arch()) {
         ::dlclose(handle);
         throw std::runtime_error("JIT arch mismatch: library=" +
                                  std::string(plugin_arch()) + " model=" + arch);
+    }
+
+    auto layout = load_symbol<JitLayoutHashFn>(handle, kJitLayoutHashSymbol);
+    if (layout() != kJitContextLayoutHash) {
+        ::dlclose(handle);
+        throw std::runtime_error(
+            "JIT layout mismatch: " + path + " (library=0x" +
+            std::to_string(layout()) + ", expected=0x" +
+            std::to_string(kJitContextLayoutHash) +
+            "); rebuild core and JIT plugin together");
     }
 
     handle_ = handle;

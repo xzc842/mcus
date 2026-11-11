@@ -1275,6 +1275,8 @@ extern "C" uint32_t mcus_jit_abi_version() { return kJitAbiVersion; }
 
 extern "C" const char* mcus_jit_arch() { return "8051"; }
 
+extern "C" uint32_t mcus_jit_layout_hash() { return kJitContextLayoutHash; }
+
 extern "C" JitTranslator* mcus_jit_create(const Model* model) {
     return new Jit8051(*model);
 }
