@@ -41,7 +41,8 @@ struct Options {
 void usage(const char* argv0) {
     std::cerr
         << "usage: " << argv0 << " --isa <isa.so> --model <model.json> "
-        << "--firmware <firmware.hex|firmware.bin> --config <config.toml>\n"
+        << "--firmware <firmware.hex|firmware.bin> --config <config.toml> "
+        << "[--jit <translator.so>]\n"
         << "\n"
         << "  --isa, -i       架构指令集动态库（如 libmcus_isa_<arch>.so）\n"
         << "  --model, -m     芯片模型文件（JSON）\n"

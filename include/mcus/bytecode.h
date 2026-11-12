@@ -51,7 +51,7 @@ enum class BcOp : uint16_t {
     SetFlags = 14,
     Branch = 15,      // imm=target instruction index
     CondBranch = 16,  // a=condition, imm=target instruction index
-    CallHelper = 17,  // a=helper id, b=argc, imm=args offset
+    CallHelper = 17,  // a=helper id, b=arg1(8bit), imm=arg0(32bit)
     CallIsa = 18,     // 回退到解释器执行一条指令
     AddCycles = 19,   // imm=cycles
     Check = 20,       // imm=guest pc；返回非零退出到慢路径
@@ -114,7 +114,7 @@ struct BcLabel {
     uint32_t code_index = 0;
 };
 
-// 一段字节码程序。通常对应一个 guest 指令，后续也可以扩展成基本块。
+// 一段字节码程序。通常对应一个 guest 基本块；块内每条指令仍要 Check。
 struct BcProgram {
     uint32_t version = kBytecodeVersion;
     std::string arch;

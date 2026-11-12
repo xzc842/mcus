@@ -7,7 +7,7 @@
 - **虚拟时间单一来源**：所有组件按虚拟晶振周期推进，不跟真实时间对齐。
 - **芯片差异在模型文件**：地址空间、寄存器语义与副作用、定时器/外设结构、引脚方向/复用、中断优先级与向量全部由 `models/*.json` 描述；核心不按芯片名、空间名或外设寄存器名做分支，换架构只换 ISA 与模型。
 - **指令集可插拔**：ISA 编译成外部 `.so`，通过 `--isa` 加载；核心只调用 ISA 的 `execute`、`reset`、`save_context`、`restore_context`、`resolve_bit_addr`、`interrupt_vector` 等钩子。当前内置 `mcus-minimal`，`8051` 和 `ARM Cortex-M3` 是外部库；单独构建 ISA 见 [docs/isa_build.md](docs/isa_build.md)。
-- **JIT 可选**：8051 可额外加载 `libmcus_jit_8051.so`，把 guest 指令翻译成宿主机器码；每条指令仍执行完整检查，冷代码和未覆盖 opcode 自动回退解释器。`mcus` 和 `mcus_bench` 都支持 `--jit`。JIT 插件可单独编译，见 [docs/jit_build.md](docs/jit_build.md)。
+- **JIT 可选**：8051 可额外加载 `libmcus_jit_8051.so`，把 guest 指令翻译成宿主机器码；每条指令仍执行完整检查，冷代码和未覆盖 opcode 自动回退解释器。`mcus` 和 `mcus_bench` 都支持 `--jit`。JIT 插件可单独编译，见 [docs/jit_build.md](docs/jit_build.md)；编写 Translator 见 [docs/jit.md](docs/jit.md)。
 - **外部程序不在本项目内**：外设模型通过共享内存和事件流与模拟器交互，只碰状态，不调用模拟器内部函数。
 - **统一双向事件流**：MMIO / GPIO / 总线 / 中断 / USB 都进入同一个 `DebugEvent` 共享内存对象，带全局 `seq`，保证顺序；out 环给外部程序消费，in 环把总线响应/UART RX/USB 包送回模拟器；支持 attach 模式，不重置队列。
 - **GPIO 事件化**：引脚只在状态变化时发 PIN 事件，外部程序/插件不轮询引脚；当前值仍可通过 `PinState` 读取。
@@ -212,12 +212,16 @@ ISA 是外部插件，启动时必须显式指定 ISA 库、芯片模型、固�
 mcus --isa <isa.so> --model <model.json> --firmware <firmware> --config <config.toml>
 ```
 
-四个启动参数：
+四个必填启动参数：
 
 - **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so` 或 `libmcus_isa_arm.so`；模拟器会校验库导出的 `arch` 与模型 `arch` 是否一致。
 - **模型文件**：描述芯片静态结构。
 - **固件**：加载到模型文件描述的非 MMIO 区域；支持 `.bin` 和 `.hex`/`.ihx`（Intel HEX）。
 - **配置文件**：共享内存名、事件流容量、晶振频率、日志级别等。
+
+可选参数：
+
+- `--jit <translator.so>`：启用 JIT；当前只有 8051 Translator。也可以在 `[simulator] jit` 中配置，命令行优先。
 
 示例：
 

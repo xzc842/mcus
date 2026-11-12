@@ -44,6 +44,8 @@ mcus/
 │   ├── simulator.h
 │   ├── config.h
 │   ├── instruction.h
+│   ├── bytecode.h
+│   ├── jit.h
 │   ├── firmware.h
 │   ├── isa_plugin.h
 │   ├── json.h
@@ -61,6 +63,9 @@ mcus/
 │   ├── isa_registry.cpp
 │   ├── isa_8051.cpp
 │   ├── isa_arm.cpp
+│   ├── isa_jit_8051.cpp
+│   ├── jit.cpp
+│   ├── jit_x86.cpp
 │   ├── main.cpp
 │   └── log.cpp
 ├── tests/
@@ -75,6 +80,12 @@ mcus/
 │   ├── test_timer.cpp
 │   ├── test_breakpoint.cpp
 │   ├── test_firmware.cpp
+│   ├── test_jit.cpp
+│   ├── test_jit_diff.cpp
+│   ├── test_jit_timing.cpp
+│   ├── test_jit_event_timing.cpp
+│   ├── test_jit_peripherals_timing.cpp
+│   ├── test_jit_cache_helpers.cpp
 │   └── test_ch552g.cpp
 └── tools/
     ├── dump_shm.cpp
@@ -98,7 +109,13 @@ cmake --build build --target mcus_isa_8051
 cmake --build build --target mcus_isa_arm
 ```
 
-详见 `docs/isa_build.md`。
+JIT 也可以单独构建：
+
+```bash
+cmake --build build --target mcus_jit_8051
+```
+
+详见 `docs/isa_build.md` 和 `docs/jit_build.md`；编写 JIT 插件见 `docs/jit.md`。
 
 ### 运行
 
@@ -108,12 +125,16 @@ cmake --build build --target mcus_isa_arm
   --config <config.toml>
 ```
 
-四个启动参数：
+四个必填参数：
 
 - **ISA 库**：架构指令集动态库，如 `libmcus_isa_8051.so` / `libmcus_isa_arm.so`。
 - **模型文件**：描述芯片静态结构。
 - **固件**：`.bin` 或 `.hex`/`.ihx`。
 - **配置文件**：共享内存名、事件流容量、晶振频率、日志级别等。
+
+可选参数：
+
+- `--jit <translator.so>`：启用 JIT；当前 8051 可用。也可以在 `[simulator] jit` 中配置。
 
 ### 调试工具
 
@@ -136,6 +157,7 @@ cmake --build build --target mcus_isa_arm
 - `simulator.start_paused`：启动后是否立即暂停。
 - `crystal.frequency_hz`：虚拟晶振频率。
 - `crystal.cycles_per_instruction`：每条指令粗略虚拟耗时。
+- `simulator.jit`：可选，8051 JIT Translator 插件路径；命令行 `--jit` 优先。
 - `debug.log_level`：`trace`/`debug`/`info`/`warn`/`error`。
 - `debug.log_output`：`stderr` 或文件路径。
 
@@ -218,17 +240,27 @@ ARM Cortex-M3 模型：
 - `InstructionSet`：`execute(CpuRegisters&, MemoryBus&)`。
 - `IsaRegistry`：按 `arch` 注册和创建 ISA 实例，提供 `register_all_isas`。
 
+### `include/mcus/jit.h`
+
+JIT 插件接口：`JitTranslator`、`JitContext`、`JitCodeSource`、`BcProgram`、`NativeProgram`、
+`JitEngine`，以及 `kJitAbiVersion`、`kJitContextLayoutHash` 和插件 ABI 符号。
+
+### `include/mcus/bytecode.h`
+
+JIT 字节码：固定 8 字节的 `BcInsn`、`BcOp`、`BcProgram`、字节码缓存文件头；
+`CallHelper` 的参数布局是 `a=helper id, b=arg1(8bit), imm=arg0(32bit)`。
+
 ### `include/mcus/cpu.h`
 
 CPU 状态与执行：
 
 - `CpuRegisters`：通用寄存器、PC、SP、flags。
 - `Cpu`：继承 `MemoryBus`，持有 ISA 实例、内存块、暂停/停机标志、中断服务栈、外设运行时状态。
-- 方法：`step`、`advance_peripherals`、`load_firmware`、`reset`、`export_memory`、`read8/16/32`、`write8/16/32`、`handle_mmio_write/read`、`check_interrupt`、`enter_interrupt`、`on_reti`、`check_reset_pin`、`check_inject_slots`、`poll_bus_in`、`poll_external_pins`、`waiting_for_bus`、`force_complete_spi`。
+- 方法：`step`、`run_jit`、`run_full_checks`、`enable_jit`、`jit_enabled`、`advance_peripherals`、`load_firmware`、`reset`、`export_memory`、`read8/16/32`、`write8/16/32`、`handle_mmio_write/read`、`check_interrupt`、`enter_interrupt`、`on_reti`、`check_reset_pin`、`check_inject_slots`、`poll_bus_in`、`poll_external_pins`、`waiting_for_bus`、`force_complete_spi`。
 
 ### `include/mcus/simulator.h`
 
-`SimulatorConfig` 和 `Simulator`：持有模型、固件、配置、共享内存、事件流、CPU；提供 `run`、`stop`；内部 `cpu_loop` 和 `clock_loop`，处理控制区命令、事件流背压、同步总线等待/超时、虚拟时间推进、定时器/外设推进、dump、复位。
+`SimulatorConfig` 和 `Simulator`：持有模型、固件、配置、共享内存、事件流、CPU；提供 `run`、`stop`、`enable_jit`；内部 `cpu_loop` 和 `clock_loop`，处理控制区命令、事件流背压、同步总线等待/超时、虚拟时间推进、定时器/外设推进、dump、复位；启用 JIT 时按 chunk 调用 `Cpu::run_jit`，并用 tick 回调保持 `advance_clock` 粒度。
 
 ### `include/mcus/config.h`
 
@@ -272,12 +304,13 @@ CPU 核心：
 - `on_reti` 恢复上下文并弹出中断服务状态。
 - `check_reset_pin` 检测复位引脚并执行复位。
 - `step` 依次检查停机、暂停、复位、总线入站、外部引脚、注入、断点、中断，然后执行一条指令；SPI 等待外部响应时返回 0 冻结时间。
+- `run_jit` 用 8051 JIT 翻译块执行；每条 guest 指令后推进外设并做完整检查，未覆盖 opcode/冷代码回退解释器；命中字节码缓存时也会创建 translator。
 
 ### `src/simulator.cpp`
 
 模拟器主循环：
 
-- `cpu_loop`：处理控制区命令、检查暂停/背压/同步总线等待、执行 `cpu_.step`、推进外设与虚拟时间、推进定时器；总线等待超时后强制完成。
+- `cpu_loop`：处理控制区命令、检查暂停/背压/同步总线等待；JIT 开启时按 `control_poll_interval` 为 chunk 调用 `run_jit`，否则执行 `cpu_.step`；推进外设与虚拟时间、推进定时器；总线等待超时后强制完成。
 - `clock_loop`：周期性诊断，停机后退出。
 - `handle_control_commands`：暂停、继续、单步、dump、复位。
 - `do_dump`：导出普通内存或 MMIO 到 dump 缓冲区，可选落文件。
@@ -300,6 +333,20 @@ CPU 核心：
 - `0xA5` 按 `wch_dptr1_movx` 扩展启用，切换 DPS 后写 xRAM 并递增 DPTR。
 - 辅助函数：`push`/`pop`、`read_acc`/`write_acc`（更新 P 标志）、`read_dpl/dph`、`write_dpl/dph`、`read_cy/ac`、`write_cy/ac/ov`、`reg_bank_base`、`reg_read/write`、`direct_read/write`、`bit_read/write`、`add_a`、`subb_a`。
 - 末尾统一 `regs.pc = pc`。
+
+### `src/jit.cpp`
+
+JIT 插件加载、ABI/布局校验、字节码翻译缓存（`.mbc`）、字节码执行器；命中缓存时也会创建
+translator，确保 helper 可用。
+
+### `src/jit_x86.cpp`
+
+x86-64 后端：`BcProgram` → 宿主机器码，ACC/PSW/IRAM/SFR 快速路径、`CallHelper`、
+`CallIsa`、`BranchIfPc`，以及 native 机器码缓存。
+
+### `src/isa_jit_8051.cpp`
+
+8051 JIT Translator：guest 指令解码、块生成、SFR/GPIO/栈/中断/乘除 helper。
 
 ### `src/log.cpp`
 
@@ -355,11 +402,24 @@ CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,00
 
 验证 CH552G 模型加载、别名寄存器、位地址解析、定时器描述。
 
+### JIT 测试
+
+- `tests/test_jit.cpp`：native 编译/执行/缓存冒烟；
+- `tests/test_jit_diff.cpp`：解释器 vs JIT 的 PC/now/ACC/PSW/内存差分，覆盖
+  `CJNE Rn,#imm`、`LCALL/ACALL` 栈语义；
+- `tests/test_jit_timing.cpp`：中断事件时间/入口 PC/最终 now；
+- `tests/test_jit_event_timing.cpp`：UART TX `BusEvent` 时间戳；
+- `tests/test_jit_peripherals_timing.cpp`：GPIO/PWM/SPI/UART RX/ADC/TKEY/USB；
+- `tests/test_jit_cache_helpers.cpp`：命中字节码缓存后 helper 仍非空；
+- `tests/test_simulator_timer.cpp` 的 `simulator_timer_jit*`：真实 `mcus --jit` 路径的
+  Timer0 计数。
+
 ## 8. 工具
 
 ### `tools/bench.cpp`
 
-性能基准：CPU 指令吞吐、事件流吞吐、共享内存寄存器访问；`--json` 可机读。
+性能基准：CPU 指令吞吐、事件流吞吐、共享内存寄存器访问；`--json` 可机读；
+`--jit <translator.so>` 可测试 JIT 路径。
 
 ### `tools/dump_shm.cpp`
 
@@ -389,3 +449,14 @@ CTest 冒烟基准：`bench_minimal`、`bench_8051`、`bench_arm`，规模 20,00
 ### 10.3 其他架构限制
 
 ARM Cortex-M3 的未实现指令、I2C/USB/CAN/DMA 协议引擎、EXTI 接入等限制见 `docs/stm32.md`。
+
+### 10.4 JIT 覆盖范围
+
+JIT 目前只有 8051 Translator；ARM 仍走解释器。8051 模型没有建模的 I2C/CAN 等外设没有
+JIT 时序回归；新增 JIT 架构时需要补 `docs/jit.md` 第 7 节的测试。
+
+## 11. JIT 文档
+
+- [docs/jit.md](docs/jit.md)：如何编写 JIT Translator 插件
+- [docs/jit_build.md](docs/jit_build.md)：JIT 插件单独编译/安装
+- [docs/benchmark.md](docs/benchmark.md)：JIT benchmark 与时序测试

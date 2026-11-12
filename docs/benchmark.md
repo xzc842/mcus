@@ -137,6 +137,8 @@ JIT 时序回归（`ctest`）：
 | `jit_timing` | 同一虚拟时间注入中断，比较 Irq 时间/入口 PC/最终 now |
 | `jit_event_timing` | 比较 UART0 TX `BusEvent` 的时间戳和数据 |
 | `jit_peripherals_timing` | GPIO/PWM/SPI/UART RX/ADC/TKEY/USB 的事件与寄存器差分 |
+| `jit_cache_helpers` | 命中 `.mbc` 字节码缓存后 translator/helper 仍可用 |
+| `jit_diff` | 解释器 vs JIT 的 PC/now/寄存器/内存；含 `CJNE Rn,#imm`、`LCALL/ACALL` |
 
 README 里有本次 8051 JIT 相对当前解释器的对比表。注意：
 

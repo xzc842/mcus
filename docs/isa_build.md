@@ -243,4 +243,5 @@ cmake --build build --target mcus_isa_8051 mcus_isa_arm -j
 - [docs/isa.md](isa.md)：`InstructionSet` 接口、模型钩子、指令实现和测试；
 - [include/mcus/isa_plugin.h](../include/mcus/isa_plugin.h)：ABI 符号和版本；
 - [include/mcus/instruction.h](../include/mcus/instruction.h)：`MemoryBus`、`InstructionSet`、`CpuRegisters`；
-- [docs/jit_build.md](jit_build.md)：JIT Translator 插件单独编译。
+- [docs/jit_build.md](jit_build.md)：JIT Translator 插件单独编译
+- [docs/jit.md](jit.md)：如何编写 JIT Translator。

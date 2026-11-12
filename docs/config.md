@@ -1,6 +1,6 @@
 # 如何编写配置文件
 
-`mcus` 的配置文件是 TOML，`main.cpp` 读 `argv[3]`，`Config::load_from_file` 解析。本文说明字段含义和写法。
+`mcus` 的配置文件是 TOML，由 `main.cpp` 的 `--config` 参数指定，`Config::load_from_file` 解析。本文说明字段含义和写法。
 
 ## 1. 启动
 
@@ -12,7 +12,7 @@
   --config config/example.toml
 ```
 
-四个参数：ISA 动态库、模型文件、固件（`.bin` 或 `.hex`/`.ihx`）、配置文件。配置文件决定共享内存名、事件流、晶振、日志。
+四个必填参数：ISA 动态库、模型文件、固件（`.bin` 或 `.hex`/`.ihx`）、配置文件；可选 `--jit`。配置文件决定共享内存名、事件流、晶振、日志。
 
 ## 2. 完整示例
 

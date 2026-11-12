@@ -1,5 +1,7 @@
 # 单独编译 JIT 模块
 
+> 编写 `JitTranslator`、字节码和正确性要求见 [docs/jit.md](jit.md)。本文只讲单独编译和部署。
+
 ## 1. 结论
 
 JIT Translator 是一个独立共享库：
@@ -352,6 +354,7 @@ readelf -d /path/to/mcus | grep RUNPATH
 
 ## 9. 相关文档
 
+- [docs/jit.md](jit.md)：JIT Translator 接口、字节码、正确性要求
 - [docs/isa_build.md](isa_build.md)：ISA 插件单独编译
 - [docs/isa.md](isa.md)：ISA 接口
 - [include/mcus/jit.h](../include/mcus/jit.h)：JIT ABI、`JitContext`、布局 hash
