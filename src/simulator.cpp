@@ -359,7 +359,10 @@ void Simulator::cpu_loop() {
 
     while (!stop_requested_.load()) {
         auto* ctl = shm_.control();
-        if (poll % cfg_.simulator.control_poll_interval == 0) {
+        // 暂停/断点/背压时 poll 不增长；必须每轮都处理控制命令，
+        // 否则 Dump/Resume/Step 会永远等不到轮询点。
+        if (cpu_.paused() || stream_.full() ||
+            poll % cfg_.simulator.control_poll_interval == 0) {
             handle_control_commands();
         }
         if (cpu_.paused()) {

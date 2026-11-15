@@ -188,3 +188,12 @@ target_compile_definitions(test_jit_cache_helpers PRIVATE
     MCUS_TEST_JIT8051_PATH="${CMAKE_BINARY_DIR}/libmcus_jit_8051.so")
 add_dependencies(test_jit_cache_helpers mcus_jit_8051)
 add_test(NAME jit_cache_helpers COMMAND test_jit_cache_helpers)
+
+add_executable(test_simulator_debug test_simulator_debug.cpp)
+target_link_libraries(test_simulator_debug PRIVATE mcus_core)
+target_compile_definitions(test_simulator_debug PRIVATE
+    MCUS_TEST_STC90C51_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/stc90c51.json"
+    MCUS_BIN_PATH="$<TARGET_FILE:mcus>"
+    MCUS_ISA_PATH="$<TARGET_FILE:mcus_isa_8051>")
+add_dependencies(test_simulator_debug mcus mcus_isa_8051)
+add_test(NAME simulator_debug_control COMMAND test_simulator_debug)
